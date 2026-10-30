@@ -29,9 +29,9 @@ var ConversationMergeRules = []string{
 type Vocabulary struct {
 	Platforms              []string `json:"platforms"`
 	ConversationMergeRules []string `json:"conversation_merge_rules"`
-	MessageKinds      []string `json:"message_kinds"`
-	ActivityGroupings []string `json:"activity_groupings"`
-	ActivityIntervals []string `json:"activity_intervals"`
+	MessageKinds           []string `json:"message_kinds"`
+	ActivityGroupings      []string `json:"activity_groupings"`
+	ActivityIntervals      []string `json:"activity_intervals"`
 }
 
 func vocabulary() Vocabulary {

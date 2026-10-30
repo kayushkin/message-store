@@ -46,8 +46,8 @@ func TestPlanConversationMergesJoinsOneChatByIds(t *testing.T) {
 				DisplayName string `json:"display_name"`
 			}{member(carolWeb)}},
 		// Erin has no number anywhere; her two threads join by person.
-		"!erin-1:x": {RoomID: "!erin-1:x", Platform: "gmessagesweb", GoogleMessagesConversationID: "70", DirectMessagePartnerUserID: erinWeb},
-		"!erin-2:x": {RoomID: "!erin-2:x", Platform: "gmessagesweb", GoogleMessagesConversationID: "71", DirectMessagePartnerUserID: erinWebAgain},
+		"!erin-1:x":  {RoomID: "!erin-1:x", Platform: "gmessagesweb", GoogleMessagesConversationID: "70", DirectMessagePartnerUserID: erinWeb},
+		"!erin-2:x":  {RoomID: "!erin-2:x", Platform: "gmessagesweb", GoogleMessagesConversationID: "71", DirectMessagePartnerUserID: erinWebAgain},
 		"!discord:x": {RoomID: "!discord:x", Platform: "discord", DirectMessagePartnerUserID: "@discord_1:x"},
 	}
 	merges, report := planConversationMerges(mergeInputs{
@@ -62,7 +62,9 @@ func TestPlanConversationMergesJoinsOneChatByIds(t *testing.T) {
 		},
 		selfPerson: "person_000009",
 	})
-	key := func(source, ref string) messagestore.ConversationKey { return messagestore.ConversationKey{Source: source, SourceRef: ref} }
+	key := func(source, ref string) messagestore.ConversationKey {
+		return messagestore.ConversationKey{Source: source, SourceRef: ref}
+	}
 	want := []messagestore.ImportConversationMerge{
 		{Merged: roomKey("!group-web:x"), Into: roomKey("!group-bridge:x"), Rule: "google_conversation_id"},
 		{Merged: roomKey("!group-bridge:x"), Into: key("sms", carolNumber+","+daveNumber), Rule: "phone_numbers"},
