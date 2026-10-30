@@ -112,6 +112,13 @@ func (c *Client) AddSupersession(supersession messagestore.ImportSupersession) e
 	return c.queued()
 }
 
+// AddConversationMerge queues the merge of one conversation into another.
+func (c *Client) AddConversationMerge(merge messagestore.ImportConversationMerge) error {
+	c.Read["conversation_merges"]++
+	c.batch.ConversationMerges = append(c.batch.ConversationMerges, merge)
+	return c.queued()
+}
+
 func (c *Client) queued() error {
 	c.pending++
 	if c.pending >= BatchSize {
@@ -143,6 +150,8 @@ func (c *Client) Flush() error {
 	c.Written.DaysUpdated += counts.DaysUpdated
 	c.Written.MessagesSuperseded += counts.MessagesSuperseded
 	c.Written.MessagesSupersededSkipped += counts.MessagesSupersededSkipped
+	c.Written.ConversationsMerged += counts.ConversationsMerged
+	c.Written.ConversationMergesSkipped += counts.ConversationMergesSkipped
 	return nil
 }
 
@@ -160,11 +169,11 @@ func (c *Client) Finish() error {
 // Report is one line for the end of a run.
 func (c *Client) Report() string {
 	if c.DryRun {
-		return fmt.Sprintf("dry run: read %d conversations, %d messages, %d conversation days; nothing sent",
-			c.Read["conversations"], c.Read["messages"], c.Read["conversation_days"])
+		return fmt.Sprintf("dry run: read %d conversations, %d messages, %d conversation days, %d conversation merges; nothing sent",
+			c.Read["conversations"], c.Read["messages"], c.Read["conversation_days"], c.Read["conversation_merges"])
 	}
 	w := c.Written
-	return fmt.Sprintf("%s: conversations %d new, %d changed; messages %d new, %d changed, %d unchanged, %d superseded, %d skipped as already superseded; days %d new, %d changed",
+	return fmt.Sprintf("%s: conversations %d new, %d changed; messages %d new, %d changed, %d unchanged, %d superseded, %d skipped as already superseded; days %d new, %d changed; conversations merged %d, merges naming a conversation not held %d",
 		c.importID, w.ConversationsCreated, w.ConversationsUpdated, w.MessagesCreated, w.MessagesUpdated, w.MessagesUnchanged, w.MessagesSuperseded,
-		w.MessagesSupersededSkipped, w.DaysCreated, w.DaysUpdated)
+		w.MessagesSupersededSkipped, w.DaysCreated, w.DaysUpdated, w.ConversationsMerged, w.ConversationMergesSkipped)
 }

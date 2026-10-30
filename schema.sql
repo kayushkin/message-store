@@ -116,3 +116,25 @@ CREATE TABLE IF NOT EXISTS superseded_messages (
     UNIQUE (source, source_ref)
 );
 CREATE INDEX IF NOT EXISTS idx_superseded_messages_by ON superseded_messages(superseded_by);
+
+-- A conversation that turned out to be another one: the same chat filed under
+-- a second id namespace (a text thread the phone archive holds by number and
+-- a Matrix room holds by room id) or carried by two rooms. The importer that
+-- knows says so with a rule; the store moves the merged conversation's
+-- messages, days and participants to the one it merges into, copies its row
+-- here whole with its participants, and removes it. Its (source, source_ref)
+-- then resolves to the conversation it merged into on every later import, and
+-- its old id answers with a redirect.
+CREATE TABLE IF NOT EXISTS conversation_merges (
+    conversation_id TEXT PRIMARY KEY,          -- the merged conversation_ id
+    source          TEXT NOT NULL,
+    source_ref      TEXT NOT NULL,
+    merged_into     TEXT NOT NULL,             -- the conversation_ id that holds its messages now
+    rule            TEXT NOT NULL,             -- vocabulary.go ConversationMergeRules: why
+    import_id       TEXT NOT NULL,             -- message_import_ that merged it
+    merged_at       INTEGER NOT NULL,
+    messages_moved  INTEGER NOT NULL,
+    row_json        TEXT NOT NULL,             -- its row and participants, as they were
+    UNIQUE (source, source_ref)
+);
+CREATE INDEX IF NOT EXISTS idx_conversation_merges_into ON conversation_merges(merged_into);

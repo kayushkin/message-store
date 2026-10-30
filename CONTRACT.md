@@ -9,11 +9,12 @@ a bad request (an unknown field included), 404 for a missing id.
 | `GET /settings` | the declared settings and their values |
 | `GET /vocabulary` | platforms, message kinds, activity groupings and intervals |
 | `GET /summary` | conversations and messages per platform, with first and last times |
-| `GET /messages` | messages in time order. `conversation` (repeatable), `person`, `platform`, `after`, `before`, `q` (full text), `order=oldest\|newest`, `limit` (≤5000, default 500), `cursor` (the last page's `next`) |
+| `GET /messages` | messages in time order. `conversation` (repeatable; a merged id reads the conversation it merged into), `person`, `platform`, `after`, `before`, `q` (full text), `order=oldest\|newest`, `limit` (≤5000, default 500), `cursor` (the last page's `next`) |
 | `GET /messages/{id}` | one message; a superseded id is a 301 whose relative `Location` is the message that holds it now |
 | `GET /superseded-messages` | retired rows, newest first, each with its whole old row as `row`. `superseded_by`, `limit` |
 | `GET /conversations` | most recently active first. `person`, `platform`, `q` (title or participant name), `limit` |
-| `GET /conversations/{id}` | one conversation, participants and message summary |
+| `GET /conversations/{id}` | one conversation, participants and message summary; a merged id is a 301 whose relative `Location` is the conversation it merged into |
+| `GET /conversation-merges` | merged conversations, newest first, each with its whole old row and participants as `row`. `merged_into`, `limit` |
 | `PATCH /conversations/{id}/participants/{handle}` | `{"person_id":"person_000001"}` names the handle's person; `""` clears it |
 | `GET /conversation-days` | `conversation`, `journal_entry`, `person`, `from`, `to` (YYYY-MM-DD), `limit` |
 | `GET /conversation-days/{id}` | the day, its conversation and its messages |
@@ -21,7 +22,7 @@ a bad request (an unknown field included), 404 for a missing id.
 | `GET /activity` | message counts per time bucket. `group_by=person\|conversation\|platform`, `interval=day\|week\|month\|year`, `time_zone` (IANA, required), `person`, `after`, `before` |
 | `GET /imports`, `GET /imports/{id}` | import runs and what each wrote |
 | `POST /imports` | `{"importer","description"}` starts a run |
-| `POST /imports/{id}/batches` | `{"conversations","messages","conversation_days"}`, written in one transaction: one bad record writes nothing |
+| `POST /imports/{id}/batches` | `{"conversations","messages","conversation_days","supersessions","conversation_merges"}`, written in one transaction: one bad record writes nothing |
 | `POST /imports/{id}/finish` | ends a run |
 
 ## Import rules
@@ -44,6 +45,18 @@ a bad request (an unknown field included), 404 for a missing id.
   stored, for an importer that does not own that message. A `by` that is not
   stored is a 400; a `superseded` that is not stored, or already retired, is
   nothing to do.
+- A batch's `conversation_merges` (`[{"merged":{source,source_ref},"into":{source,source_ref},"rule"}]`,
+  applied after its supersessions and before its days) make two conversations
+  one. `rule` is one of `GET /vocabulary`'s `conversation_merge_rules`. The
+  merged conversation's messages, days and participants move to the other (a
+  handle in both keeps what the survivor knows and learns what it does not),
+  its row and participants are copied whole to `conversation_merges`, and it is
+  removed; its id then redirects. Its `(source, source_ref)` resolves to the
+  survivor on every later import, which adds participants but never changes
+  the survivor's title, platform or `is_group`. Either key may name a
+  conversation merged earlier. A side the store does not hold is skipped and
+  counted (`conversation_merges_skipped`); two days on the same date in both
+  conversations is a 400.
 - A conversation day is found by `(conversation, day)`; its span is computed from
   `day` and `time_zone`.
 

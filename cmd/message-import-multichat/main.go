@@ -338,6 +338,17 @@ func (run runner) run(out io.Writer) error {
 			return err
 		}
 	}
+	mergeInputs, err := run.readMergeInputs(rooms)
+	if err != nil {
+		return err
+	}
+	merges, mergeReport := planConversationMerges(mergeInputs)
+	fmt.Fprintf(out, "Merges: %s\n", mergeReport)
+	for _, merge := range merges {
+		if err := client.AddConversationMerge(merge); err != nil {
+			return err
+		}
+	}
 	if err := client.Finish(); err != nil {
 		return err
 	}

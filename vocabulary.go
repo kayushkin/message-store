@@ -18,16 +18,24 @@ var ActivityGroupings = []string{"person", "conversation", "platform"}
 // ActivityIntervals are the bucket sizes GET /activity can count in.
 var ActivityIntervals = []string{"day", "week", "month", "year"}
 
+// ConversationMergeRules are why one conversation was merged into another.
+var ConversationMergeRules = []string{
+	"google_conversation_id", // two Matrix rooms carry one Google Messages conversation
+	"phone_numbers",          // a text thread's other people have exactly the numbers of a phone thread
+	"direct_person",          // two direct chats with the same people-store person on one app
+}
+
 // Vocabulary is GET /vocabulary.
 type Vocabulary struct {
-	Platforms         []string `json:"platforms"`
+	Platforms              []string `json:"platforms"`
+	ConversationMergeRules []string `json:"conversation_merge_rules"`
 	MessageKinds      []string `json:"message_kinds"`
 	ActivityGroupings []string `json:"activity_groupings"`
 	ActivityIntervals []string `json:"activity_intervals"`
 }
 
 func vocabulary() Vocabulary {
-	return Vocabulary{Platforms: Platforms, MessageKinds: MessageKinds, ActivityGroupings: ActivityGroupings, ActivityIntervals: ActivityIntervals}
+	return Vocabulary{Platforms: Platforms, ConversationMergeRules: ConversationMergeRules, MessageKinds: MessageKinds, ActivityGroupings: ActivityGroupings, ActivityIntervals: ActivityIntervals}
 }
 
 func contains(list []string, value string) bool {

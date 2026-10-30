@@ -56,6 +56,11 @@ func (s *Store) ListMessages(filter MessageFilter) (MessagePage, error) {
 	var where []string
 	var args []any
 	if len(filter.ConversationIDs) > 0 {
+		live, err := s.liveConversationIDs(filter.ConversationIDs)
+		if err != nil {
+			return MessagePage{}, err
+		}
+		filter.ConversationIDs = live
 		where = append(where, "m.conversation_id IN ("+placeholders(len(filter.ConversationIDs))+")")
 		for _, id := range filter.ConversationIDs {
 			args = append(args, id)
@@ -240,6 +245,13 @@ func (s *Store) GetConversation(id string) (Conversation, error) {
 	err := s.db.QueryRow(`SELECT id, platform, source, source_ref, title, is_group, created_at, updated_at FROM conversations WHERE id = ?`, id).
 		Scan(&conversation.ID, &conversation.Platform, &conversation.Source, &conversation.SourceRef, &conversation.Title, &isGroup, &conversation.CreatedAt, &conversation.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
+		into, lookupErr := s.mergedInto(id)
+		if lookupErr != nil {
+			return Conversation{}, lookupErr
+		}
+		if into != "" {
+			return Conversation{}, ErrMerged{ID: id, MergedInto: into}
+		}
 		return Conversation{}, fmt.Errorf("%w: conversation %s", ErrNotFound, id)
 	}
 	if err != nil {
@@ -296,6 +308,11 @@ func (s *Store) ListConversationDays(filter DayFilter) ([]ConversationDay, error
 	var where []string
 	var args []any
 	if filter.ConversationID != "" {
+		live, err := s.liveConversationIDs([]string{filter.ConversationID})
+		if err != nil {
+			return nil, err
+		}
+		filter.ConversationID = live[0]
 		where = append(where, "d.conversation_id = ?")
 		args = append(args, filter.ConversationID)
 	}

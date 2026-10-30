@@ -131,6 +131,40 @@ type ImportBatch struct {
 	// Supersessions retire rows in favour of messages already stored,
 	// written after the batch's messages.
 	Supersessions []ImportSupersession `json:"supersessions,omitempty"`
+	// ConversationMerges merge conversations that are one chat, written
+	// after the supersessions and before the days.
+	ConversationMerges []ImportConversationMerge `json:"conversation_merges,omitempty"`
+}
+
+// ConversationKey finds a conversation by its id in the namespace it came from.
+type ConversationKey struct {
+	Source    string `json:"source"`
+	SourceRef string `json:"source_ref"`
+}
+
+// ImportConversationMerge merges the conversation filed under Merged into the
+// one filed under Into, for Rule (one of ConversationMergeRules). Either key
+// may name a conversation merged earlier, which stands for the one it merged
+// into. A side the store does not hold is skipped and counted; two that are
+// already one is nothing to do.
+type ImportConversationMerge struct {
+	Merged ConversationKey `json:"merged"`
+	Into   ConversationKey `json:"into"`
+	Rule   string          `json:"rule"`
+}
+
+// ConversationMerge is a conversation merged into another. Row is its row as
+// it was, with its participants.
+type ConversationMerge struct {
+	ConversationID string          `json:"conversation_id"`
+	Source         string          `json:"source"`
+	SourceRef      string          `json:"source_ref"`
+	MergedInto     string          `json:"merged_into"`
+	Rule           string          `json:"rule"`
+	ImportID       string          `json:"import_id"`
+	MergedAt       int64           `json:"merged_at"`
+	MessagesMoved  int             `json:"messages_moved"`
+	Row            json.RawMessage `json:"row" tstype:"{ [column: string]: unknown }"`
 }
 
 // ImportSupersession retires the row filed under Superseded in favour of the
@@ -224,6 +258,10 @@ type ImportCounts struct {
 	// MessagesSupersededSkipped counts messages sent under a key already
 	// superseded: skipped, since another row holds the message.
 	MessagesSupersededSkipped int `json:"messages_superseded_skipped"`
+	ConversationsMerged       int `json:"conversations_merged"`
+	// ConversationMergesSkipped counts merges naming a conversation the
+	// store does not hold.
+	ConversationMergesSkipped int `json:"conversation_merges_skipped"`
 }
 
 // JournalEntryLink is one item of POST /conversation-days/journal-entries: the

@@ -91,6 +91,9 @@ func (s *Store) FinishImport(id string) (Import, error) {
 
 type conversationKey struct{ source, sourceRef string }
 
+// errMergedKey marks, inside upsertConversation, a key that was merged.
+var errMergedKey = errors.New("merged conversation key")
+
 // batchWriter holds one batch's transaction and its id counters.
 type batchWriter struct {
 	tx            *sql.Tx
@@ -149,6 +152,12 @@ func (s *Store) ApplyBatch(importID string, batch ImportBatch) (ImportCounts, er
 				supersession.By.Source, supersession.By.SourceRef, err)
 		}
 	}
+	for i, merge := range batch.ConversationMerges {
+		if err := w.applyMerge(merge); err != nil {
+			return ImportCounts{}, fmt.Errorf("conversation merge %d (%s %s into %s %s): %w", i, merge.Merged.Source, merge.Merged.SourceRef,
+				merge.Into.Source, merge.Into.SourceRef, err)
+		}
+	}
 	for i, day := range batch.ConversationDays {
 		if err := w.upsertDay(day); err != nil {
 			return ImportCounts{}, fmt.Errorf("conversation day %d (%s %s %s): %w", i, day.ConversationSource, day.ConversationSourceRef, day.Day, err)
@@ -180,6 +189,8 @@ func (c *ImportCounts) add(other ImportCounts) {
 	c.DaysUpdated += other.DaysUpdated
 	c.MessagesSuperseded += other.MessagesSuperseded
 	c.MessagesSupersededSkipped += other.MessagesSupersededSkipped
+	c.ConversationsMerged += other.ConversationsMerged
+	c.ConversationMergesSkipped += other.ConversationMergesSkipped
 }
 
 // applySupersession retires a row in favour of a stored message.
@@ -203,13 +214,12 @@ func (w *batchWriter) conversationID(source, sourceRef string) (string, error) {
 	if id, known := w.conversations[key]; known {
 		return id, nil
 	}
-	var id string
-	err := w.tx.QueryRow(`SELECT id FROM conversations WHERE source = ? AND source_ref = ?`, source, sourceRef).Scan(&id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", fmt.Errorf("%w: no conversation %s %s; send it first", ErrInvalid, source, sourceRef)
-	}
+	id, _, err := liveConversationID(w.tx, ConversationKey{source, sourceRef})
 	if err != nil {
 		return "", err
+	}
+	if id == "" {
+		return "", fmt.Errorf("%w: no conversation %s %s; send it first", ErrInvalid, source, sourceRef)
 	}
 	w.conversations[key] = id
 	return id, nil
@@ -226,7 +236,20 @@ func (w *batchWriter) upsertConversation(conversation ImportConversation) error 
 	var isGroup int
 	err := w.tx.QueryRow(`SELECT id, platform, title, is_group FROM conversations WHERE source = ? AND source_ref = ?`,
 		conversation.Source, conversation.SourceRef).Scan(&id, &platform, &title, &isGroup)
+	if errors.Is(err, sql.ErrNoRows) {
+		// A merged conversation's key stands for the one it merged into, which
+		// keeps its own title and kind and gains the participants.
+		var mergedInto string
+		lookup := w.tx.QueryRow(`SELECT merged_into FROM conversation_merges WHERE source = ? AND source_ref = ?`, conversation.Source, conversation.SourceRef).Scan(&mergedInto)
+		switch {
+		case lookup == nil:
+			id, err = mergedInto, errMergedKey
+		case !errors.Is(lookup, sql.ErrNoRows):
+			return lookup
+		}
+	}
 	switch {
+	case errors.Is(err, errMergedKey):
 	case errors.Is(err, sql.ErrNoRows):
 		seq, newID, err := w.mint("conversations", prefixConversation)
 		if err != nil {

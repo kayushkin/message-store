@@ -83,6 +83,12 @@ type room struct {
 		UserID      string `json:"user_id"`
 		DisplayName string `json:"display_name"`
 	} `json:"members"`
+	// DirectMessagePartnerUserID is the other person in a room its bridge
+	// marks one-to-one.
+	DirectMessagePartnerUserID string `json:"direct_message_partner_user_id"`
+	// GoogleMessagesConversationID is Google's id for a Google Messages
+	// room's conversation, which both bridges' rooms for it share.
+	GoogleMessagesConversationID string `json:"google_messages_conversation_id"`
 }
 
 // discordArchiveContent is the part of a Discord message object this command
@@ -438,9 +444,16 @@ func (c converter) conversations(rows []loggedMessage) ([]messagestore.ImportCon
 		key := source + "\x00" + sourceRef
 		g := byKey[key]
 		if g == nil {
-			listed := c.rooms[row.RoomID]
+			listed, isListed := c.rooms[row.RoomID]
 			title := row.RoomName
 			isGroup := listed.MemberCount > 2
+			// A Google Messages room is one-to-one when its bridge says so (a
+			// web bridge room lists only those who wrote), and multichat's
+			// name for it lists the other people where Google's names the user.
+			if isListed && isGoogleMessages(listed.Platform) {
+				isGroup = listed.DirectMessagePartnerUserID == ""
+				title = listed.Name
+			}
 			if platform == "discord" && row.NetworkID != "" {
 				title = strings.TrimSpace(row.NetworkName + " " + row.RoomName)
 				isGroup = true

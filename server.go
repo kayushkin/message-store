@@ -27,6 +27,7 @@ func RegisterHandlers(mux *http.ServeMux, s *Store) {
 
 	mux.HandleFunc("GET /conversations", h.listConversations)
 	mux.HandleFunc("GET /conversations/{id}", h.getConversation)
+	mux.HandleFunc("GET /conversation-merges", h.listConversationMerges)
 	mux.HandleFunc("PATCH /conversations/{id}/participants/{handle}", h.patchParticipant)
 
 	mux.HandleFunc("GET /conversation-days", h.listDays)
@@ -188,6 +189,20 @@ func (h *handler) listSupersededMessages(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, superseded)
 }
 
+func (h *handler) listConversationMerges(w http.ResponseWriter, r *http.Request) {
+	limit, err := queryLimit(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	merges, err := h.s.ListConversationMerges(r.URL.Query().Get("merged_into"), limit)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, merges)
+}
+
 func (h *handler) listConversations(w http.ResponseWriter, r *http.Request) {
 	limit, err := queryLimit(r)
 	if err != nil {
@@ -205,6 +220,13 @@ func (h *handler) listConversations(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) getConversation(w http.ResponseWriter, r *http.Request) {
 	conversation, err := h.s.GetConversation(r.PathValue("id"))
+	var merged ErrMerged
+	if errors.As(err, &merged) {
+		// Relative, so it holds behind a proxy's prefix.
+		w.Header().Set("Location", url.PathEscape(merged.MergedInto))
+		writeJSON(w, http.StatusMovedPermanently, map[string]string{"error": merged.Error(), "merged_into": merged.MergedInto})
+		return
+	}
 	if err != nil {
 		writeError(w, err)
 		return
