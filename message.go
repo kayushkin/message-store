@@ -1,0 +1,220 @@
+package messagestore
+
+// Wire types. generate-ts.sh renders this file and vocabulary.go to
+// ts/model.ts; a type another program reads lives here or it is not rendered.
+
+// Conversation is one chat on one platform.
+type Conversation struct {
+	ID        string `json:"id"`
+	Platform  string `json:"platform"`
+	Source    string `json:"source"`
+	SourceRef string `json:"source_ref"`
+	Title     string `json:"title"`
+	IsGroup   bool   `json:"is_group"`
+	// Participants are everyone the store has seen in it, the user included.
+	Participants []Participant `json:"participants"`
+	// MessageCount, FirstMessageAt and LastMessageAt summarise its messages.
+	MessageCount   int   `json:"message_count"`
+	FirstMessageAt int64 `json:"first_message_at"`
+	LastMessageAt  int64 `json:"last_message_at"`
+	CreatedAt      int64 `json:"created_at"`
+	UpdatedAt      int64 `json:"updated_at"`
+}
+
+// Participant is one handle in a conversation and the person it belongs to.
+type Participant struct {
+	Handle      string `json:"handle"`
+	DisplayName string `json:"display_name"`
+	// PersonID is people-store's id, or empty when nobody is known.
+	PersonID string `json:"person_id"`
+	IsSelf   bool   `json:"is_self"`
+}
+
+// Attachment is a picture, video or file sent with a message.
+type Attachment struct {
+	// PhotoID is photo-store's id when photo-store keeps the picture.
+	PhotoID  string `json:"photo_id,omitempty"`
+	MimeType string `json:"mime_type,omitempty"`
+	Name     string `json:"name,omitempty"`
+}
+
+// Message is one message, as the store answers it.
+type Message struct {
+	ID             string `json:"id"`
+	ConversationID string `json:"conversation_id"`
+	// SentAt is unix milliseconds, UTC.
+	SentAt       int64  `json:"sent_at"`
+	SenderHandle string `json:"sender_handle"`
+	// SenderName, SenderPersonID and FromSelf are read through the
+	// conversation's participant row for SenderHandle.
+	SenderName        string       `json:"sender_name"`
+	SenderPersonID    string       `json:"sender_person_id"`
+	FromSelf          bool         `json:"from_self"`
+	Kind              string       `json:"kind"`
+	Body              string       `json:"body"`
+	Attachments       []Attachment `json:"attachments"`
+	ReplyToSourceRef  string       `json:"reply_to_source_ref,omitempty"`
+	CallSeconds       int          `json:"call_seconds,omitempty"`
+	Edited            bool         `json:"edited,omitempty"`
+	DeletedOnPlatform bool         `json:"deleted_on_platform,omitempty"`
+	Source            string       `json:"source"`
+	SourceRef         string       `json:"source_ref"`
+	ImportedBy        string       `json:"imported_by"`
+}
+
+// ConversationDay is one conversation on one local day.
+type ConversationDay struct {
+	ID               string `json:"id"`
+	ConversationID   string `json:"conversation_id"`
+	Day              string `json:"day"`
+	TimeZone         string `json:"time_zone"`
+	StartsAt         int64  `json:"starts_at"`
+	EndsAt           int64  `json:"ends_at"`
+	JournalSource    string `json:"journal_source"`
+	JournalSourceRef string `json:"journal_source_ref"`
+	JournalEntryID   string `json:"journal_entry_id"`
+	// MessageCount counts the conversation's messages inside the span.
+	MessageCount int `json:"message_count"`
+}
+
+// ConversationDayWithMessages is GET /conversation-days/{id}: the day, its
+// conversation and its messages in time order.
+type ConversationDayWithMessages struct {
+	ConversationDay
+	Conversation Conversation `json:"conversation"`
+	Messages     []Message    `json:"messages"`
+}
+
+// MessagePage is a list of messages and the cursor for the next page.
+type MessagePage struct {
+	Messages []Message `json:"messages"`
+	// Next is the cursor to pass as `cursor` for the following page, or empty
+	// at the end.
+	Next string `json:"next"`
+}
+
+// ActivityBucket counts messages in one span of time for one key (a person, a
+// conversation or a platform, as the request groups them).
+type ActivityBucket struct {
+	// Start is the bucket's first instant, unix ms, in the time zone asked.
+	Start    int64  `json:"start"`
+	Key      string `json:"key"`
+	Sent     int    `json:"sent"`
+	Received int    `json:"received"`
+}
+
+// ImportStart is POST /imports.
+type ImportStart struct {
+	Importer    string `json:"importer"`
+	Description string `json:"description"`
+}
+
+// Import is one run of an importer.
+type Import struct {
+	ID          string       `json:"id"`
+	Importer    string       `json:"importer"`
+	Description string       `json:"description"`
+	StartedAt   int64        `json:"started_at"`
+	FinishedAt  int64        `json:"finished_at"`
+	Counts      ImportCounts `json:"counts"`
+}
+
+// ImportBatch is POST /imports/{id}/batches. Conversations come before the
+// messages and days that name them, in this batch or an earlier one. One bad
+// record writes nothing of the batch.
+type ImportBatch struct {
+	Conversations    []ImportConversation    `json:"conversations"`
+	Messages         []ImportMessage         `json:"messages"`
+	ConversationDays []ImportConversationDay `json:"conversation_days"`
+}
+
+// ImportConversation is a conversation found by (source, source_ref).
+// Participants are added or updated by handle; one the batch leaves out is
+// kept. A participant's person_id is written only when the batch gives one,
+// so a person set by hand survives an import that knows nobody.
+type ImportConversation struct {
+	Platform     string        `json:"platform"`
+	Source       string        `json:"source"`
+	SourceRef    string        `json:"source_ref"`
+	Title        string        `json:"title"`
+	IsGroup      bool          `json:"is_group"`
+	Participants []Participant `json:"participants"`
+}
+
+// ImportMessage is a message found by (source, source_ref). Its conversation
+// is named by the conversation's own source and source_ref.
+type ImportMessage struct {
+	ConversationSource    string       `json:"conversation_source"`
+	ConversationSourceRef string       `json:"conversation_source_ref"`
+	SentAt                int64        `json:"sent_at"`
+	SenderHandle          string       `json:"sender_handle"`
+	Kind                  string       `json:"kind"`
+	Body                  string       `json:"body"`
+	Attachments           []Attachment `json:"attachments"`
+	ReplyToSourceRef      string       `json:"reply_to_source_ref"`
+	CallSeconds           int          `json:"call_seconds"`
+	Edited                bool         `json:"edited"`
+	DeletedOnPlatform     bool         `json:"deleted_on_platform"`
+	Source                string       `json:"source"`
+	SourceRef             string       `json:"source_ref"`
+	// SourceHash is the importer's hash of what it read; an unchanged hash
+	// skips the row.
+	SourceHash string `json:"source_hash"`
+}
+
+// ImportConversationDay names one local day of a conversation, and the
+// journal-store transcript that held it, if one did.
+type ImportConversationDay struct {
+	ConversationSource    string `json:"conversation_source"`
+	ConversationSourceRef string `json:"conversation_source_ref"`
+	Day                   string `json:"day"`
+	TimeZone              string `json:"time_zone"`
+	JournalSource         string `json:"journal_source"`
+	JournalSourceRef      string `json:"journal_source_ref"`
+}
+
+// ImportCounts is what a batch, or a whole import, did.
+type ImportCounts struct {
+	ConversationsCreated int `json:"conversations_created"`
+	ConversationsUpdated int `json:"conversations_updated"`
+	MessagesCreated      int `json:"messages_created"`
+	MessagesUpdated      int `json:"messages_updated"`
+	MessagesUnchanged    int `json:"messages_unchanged"`
+	DaysCreated          int `json:"days_created"`
+	DaysUpdated          int `json:"days_updated"`
+}
+
+// JournalEntryLink is one item of POST /conversation-days/journal-entries: the
+// journal-store entry that holds the transcript with this source and
+// source_ref.
+type JournalEntryLink struct {
+	JournalSource    string `json:"journal_source"`
+	JournalSourceRef string `json:"journal_source_ref"`
+	JournalEntryID   string `json:"journal_entry_id"`
+}
+
+// JournalEntryLinkResult says how many links matched a day and which did not.
+type JournalEntryLinkResult struct {
+	Linked    int                `json:"linked"`
+	Unmatched []JournalEntryLink `json:"unmatched"`
+}
+
+// ParticipantPatch is PATCH /conversations/{id}/participants/{handle}.
+type ParticipantPatch struct {
+	PersonID *string `json:"person_id"`
+}
+
+// Summary is GET /summary: how much the store holds, by platform.
+type Summary struct {
+	Platforms []PlatformSummary `json:"platforms"`
+}
+
+// PlatformSummary counts one platform's conversations and messages.
+type PlatformSummary struct {
+	Platform       string `json:"platform"`
+	Conversations  int    `json:"conversations"`
+	Messages       int    `json:"messages"`
+	FirstMessageAt int64  `json:"first_message_at"`
+	LastMessageAt  int64  `json:"last_message_at"`
+}
+
