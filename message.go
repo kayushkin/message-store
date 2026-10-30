@@ -184,7 +184,7 @@ type SupersededMessage struct {
 	SupersededBy string          `json:"superseded_by"`
 	ImportID     string          `json:"import_id"`
 	SupersededAt int64           `json:"superseded_at"`
-	Row          json.RawMessage `json:"row" tstype:"Record<string, unknown>"`
+	Row          json.RawMessage `json:"row" tstype:"{ [column: string]: unknown }"`
 }
 
 // ImportConversationDay names one local day of a conversation, and the
