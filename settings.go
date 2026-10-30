@@ -107,11 +107,11 @@ func PeopleStoreURLDefinition() servicesettings.Definition {
 		Description: "Where people-store answers: an importer asks GET /identities/resolve whose each handle is."}
 }
 
-// MultichatURLDefinition is multichat's API root, the prefix of
-// GET /message-log and GET /conversations.
+// MultichatURLDefinition is where multichat answers, its routes under
+// /api, as multichat-send reads the same variable.
 func MultichatURLDefinition() servicesettings.Definition {
-	return servicesettings.Definition{Key: SettingMultichatURL, EnvironmentVariable: "MULTICHAT_URL", Kind: msg.ServiceSettingKindWiring, ValueType: msg.ServiceSettingValueTypeString, Default: "http://127.0.0.1:8402/api",
-		Description: "multichat's API root: message-import-multichat reads GET /message-log and GET /conversations under it."}
+	return servicesettings.Definition{Key: SettingMultichatURL, EnvironmentVariable: "MULTICHAT_URL", Kind: msg.ServiceSettingKindWiring, ValueType: msg.ServiceSettingValueTypeString, Default: "http://127.0.0.1:8402",
+		Description: "Where multichat answers: message-import-multichat reads /api/message-log and /api/conversations there."}
 }
 
 // MultichatTokenDefinition is the bearer token multichat asks for. Only

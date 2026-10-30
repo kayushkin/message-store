@@ -86,7 +86,7 @@ func main() {
 		os.Exit(2)
 	}
 	run := runner{
-		multichat:      multichatClient{base: strings.TrimRight(settings.String(messagestore.SettingMultichatURL), "/"), token: token},
+		multichat:      multichatClient{base: strings.TrimRight(settings.String(messagestore.SettingMultichatURL), "/") + "/api", token: token},
 		storeURL:       settings.String(messagestore.SettingStoreURL),
 		peopleStoreURL: strings.TrimRight(settings.String(messagestore.SettingPeopleStoreURL), "/"),
 		photoStoreURL:  strings.TrimRight(settings.String(messagestore.SettingPhotoStoreURL), "/"),
