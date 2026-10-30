@@ -23,6 +23,11 @@ const (
 	SettingListenAddress = "listen_address"
 	SettingDataDirectory = "data_directory"
 	SettingStoreURL      = "message_store_url"
+	// SettingPhotoStoreURL is where the importers look up a chat's pictures.
+	SettingPhotoStoreURL = "photo_store_url"
+	// SettingJournalStoreURL is where the journal link command reads
+	// transcripts.
+	SettingJournalStoreURL = "journal_store_url"
 )
 
 // DefaultListenAddress is loopback, deliberately: these are private messages,
@@ -70,7 +75,21 @@ func StoreURLDefinition() servicesettings.Definition {
 // reads. An importer that reads more adds its own definitions here, so the
 // settings test sees them.
 func ImporterSettingDefinitions() []servicesettings.Definition {
-	return []servicesettings.Definition{StoreURLDefinition()}
+	return []servicesettings.Definition{StoreURLDefinition(), PhotoStoreURLDefinition(), JournalStoreURLDefinition()}
+}
+
+// PhotoStoreURLDefinition is where photo-store answers: the chat importers
+// find a sent picture's photo id there by the file's sha256.
+func PhotoStoreURLDefinition() servicesettings.Definition {
+	return servicesettings.Definition{Key: SettingPhotoStoreURL, EnvironmentVariable: "PHOTO_STORE_URL", Kind: msg.ServiceSettingKindWiring, ValueType: msg.ServiceSettingValueTypeString, Default: "http://127.0.0.1:8329",
+		Description: "Where photo-store answers: an importer looks up each sent picture there by the original file's sha256."}
+}
+
+// JournalStoreURLDefinition is where journal-store answers: the link command
+// reads its transcript entries there.
+func JournalStoreURLDefinition() servicesettings.Definition {
+	return servicesettings.Definition{Key: SettingJournalStoreURL, EnvironmentVariable: "JOURNAL_STORE_URL", Kind: msg.ServiceSettingKindWiring, ValueType: msg.ServiceSettingValueTypeString, Default: "http://127.0.0.1:8322",
+		Description: "Where journal-store answers: message-link-journal-transcripts reads transcript entries there."}
 }
 
 // NewImporterSettingsRegistry reads an importer's settings. It owns no
