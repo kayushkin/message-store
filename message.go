@@ -83,8 +83,8 @@ type ConversationDay struct {
 // conversation and its messages in time order.
 type ConversationDayWithMessages struct {
 	ConversationDay `tstype:",extends"`
-	Conversation Conversation `json:"conversation"`
-	Messages     []Message    `json:"messages"`
+	Conversation    Conversation `json:"conversation"`
+	Messages        []Message    `json:"messages"`
 }
 
 // MessagePage is a list of messages and the cursor for the next page.
@@ -243,4 +243,3 @@ type PlatformSummary struct {
 	FirstMessageAt int64  `json:"first_message_at"`
 	LastMessageAt  int64  `json:"last_message_at"`
 }
-
