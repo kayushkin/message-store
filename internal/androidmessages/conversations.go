@@ -97,7 +97,7 @@ func Conversations(archive *Archive) ([]*Conversation, Skipped) {
 		}
 		conversation := keptByKey[call.Number]
 		if conversation == nil {
-			if E164(call.Number) != call.Number {
+			if call.Number == "" || E164(call.Number) != call.Number {
 				skipped.CallsNotPhoneNumber++
 				continue
 			}

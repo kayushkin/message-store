@@ -16,11 +16,12 @@ func TestCallsToANumberNeverTextedMakeAConversationOfTheirOwn(t *testing.T) {
 			{Number: "+12025550177", Time: at, Type: CallOutgoing, DurationSeconds: 60},
 			{Number: "+12025550177", Time: at.Add(time.Hour), Type: CallMissed},
 			{Number: "Private", Time: at, Type: CallIncoming},
+			{Number: "", Time: at, Type: CallMissed},
 			{Number: "+12025550188", Time: at, Type: CallBlocked},
 		},
 	}
 	conversations, skipped := Conversations(archive)
-	if len(conversations) != 2 || skipped.CallsNotPhoneNumber != 1 || skipped.BlockedCalls != 1 {
+	if len(conversations) != 2 || skipped.CallsNotPhoneNumber != 2 || skipped.BlockedCalls != 1 {
 		t.Fatalf("conversations = %d, skipped = %+v", len(conversations), skipped)
 	}
 	texted, calledOnly := conversations[0], conversations[1]
