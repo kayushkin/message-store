@@ -154,6 +154,13 @@ func placeholders(count int) string {
 func (s *Store) GetMessage(id string) (Message, error) {
 	message, _, err := scanMessage(s.db.QueryRow("SELECT "+messageColumns+" "+messageJoin+" WHERE m.id = ?", id))
 	if errors.Is(err, sql.ErrNoRows) {
+		var supersededBy string
+		switch lookupErr := s.db.QueryRow(`SELECT superseded_by FROM superseded_messages WHERE id = ?`, id).Scan(&supersededBy); {
+		case lookupErr == nil:
+			return Message{}, ErrSuperseded{ID: id, SupersededBy: supersededBy}
+		case !errors.Is(lookupErr, sql.ErrNoRows):
+			return Message{}, lookupErr
+		}
 		return Message{}, fmt.Errorf("%w: message %s", ErrNotFound, id)
 	}
 	return message, err
@@ -508,4 +515,52 @@ func (s *Store) Summarize() (Summary, error) {
 		summary.Platforms = append(summary.Platforms, platform)
 	}
 	return summary, rows.Err()
+}
+
+// ErrSuperseded wraps the id of the message that now holds a retired one.
+type ErrSuperseded struct{ ID, SupersededBy string }
+
+func (e ErrSuperseded) Error() string {
+	return fmt.Sprintf("message %s was superseded by %s", e.ID, e.SupersededBy)
+}
+
+const supersededColumns = `id, source, source_ref, superseded_by, import_id, superseded_at, row_json`
+
+func scanSuperseded(row interface{ Scan(...any) error }) (SupersededMessage, error) {
+	var superseded SupersededMessage
+	var rowJSON string
+	if err := row.Scan(&superseded.ID, &superseded.Source, &superseded.SourceRef, &superseded.SupersededBy, &superseded.ImportID,
+		&superseded.SupersededAt, &rowJSON); err != nil {
+		return SupersededMessage{}, err
+	}
+	superseded.Row = json.RawMessage(rowJSON)
+	return superseded, nil
+}
+
+// ListSupersededMessages answers GET /superseded-messages, newest retirement
+// first; supersededBy narrows it to the rows one message replaced.
+func (s *Store) ListSupersededMessages(supersededBy string, limit int) ([]SupersededMessage, error) {
+	if limit <= 0 || limit > 5000 {
+		limit = 500
+	}
+	query := `SELECT ` + supersededColumns + ` FROM superseded_messages`
+	var args []any
+	if supersededBy != "" {
+		query += ` WHERE superseded_by = ?`
+		args = append(args, supersededBy)
+	}
+	rows, err := s.db.Query(query+` ORDER BY superseded_at DESC, id LIMIT ?`, append(args, limit)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SupersededMessage{}
+	for rows.Next() {
+		superseded, err := scanSuperseded(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, superseded)
+	}
+	return out, rows.Err()
 }

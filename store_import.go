@@ -172,6 +172,7 @@ func (c *ImportCounts) add(other ImportCounts) {
 	c.MessagesUnchanged += other.MessagesUnchanged
 	c.DaysCreated += other.DaysCreated
 	c.DaysUpdated += other.DaysUpdated
+	c.MessagesSuperseded += other.MessagesSuperseded
 }
 
 func (w *batchWriter) conversationID(source, sourceRef string) (string, error) {
@@ -258,6 +259,13 @@ func (w *batchWriter) upsertMessage(message ImportMessage) error {
 	if message.SentAt <= 0 {
 		return fmt.Errorf("%w: sent_at is required", ErrInvalid)
 	}
+	var retiredAs string
+	err := w.tx.QueryRow(`SELECT superseded_by FROM superseded_messages WHERE source = ? AND source_ref = ?`, message.Source, message.SourceRef).Scan(&retiredAs)
+	if err == nil {
+		return fmt.Errorf("%w: %s %s was superseded by %s; send that message's own source and source_ref", ErrInvalid, message.Source, message.SourceRef, retiredAs)
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	conversationID, err := w.conversationID(message.ConversationSource, message.ConversationSourceRef)
 	if err != nil {
 		return err
@@ -290,6 +298,7 @@ func (w *batchWriter) upsertMessage(message ImportMessage) error {
 		if err != nil {
 			return err
 		}
+		id = newID
 		w.counts.MessagesCreated++
 	case err != nil:
 		return err
@@ -305,6 +314,50 @@ func (w *batchWriter) upsertMessage(message ImportMessage) error {
 		}
 		w.counts.MessagesUpdated++
 	}
+	for _, old := range message.Supersedes {
+		if err := w.supersede(old, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// supersede retires the row filed under old, if there is one, in favour of
+// the message supersededBy: it copies every column to superseded_messages
+// and removes the row. A message cannot supersede itself.
+func (w *batchWriter) supersede(old MessageKey, supersededBy string) error {
+	if old.Source == "" || old.SourceRef == "" {
+		return fmt.Errorf("%w: a superseded message needs source and source_ref", ErrInvalid)
+	}
+	var oldID, rowJSON string
+	err := w.tx.QueryRow(`SELECT id, json_object(
+			'seq', seq, 'id', id, 'conversation_id', conversation_id, 'sent_at', sent_at, 'sender_handle', sender_handle,
+			'kind', kind, 'body', body, 'attachments', json(attachments), 'reply_to_source_ref', reply_to_source_ref,
+			'call_seconds', call_seconds, 'edited', edited, 'deleted_on_platform', deleted_on_platform, 'source', source,
+			'source_ref', source_ref, 'source_hash', source_hash, 'imported_by', imported_by, 'created_at', created_at,
+			'updated_at', updated_at)
+		FROM messages WHERE source = ? AND source_ref = ?`, old.Source, old.SourceRef).Scan(&oldID, &rowJSON)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if oldID == supersededBy {
+		return fmt.Errorf("%w: %s %s is the message itself", ErrInvalid, old.Source, old.SourceRef)
+	}
+	if _, err := w.tx.Exec(`INSERT INTO superseded_messages (id, source, source_ref, superseded_by, import_id, superseded_at, row_json)
+		VALUES (?,?,?,?,?,?,?)`, oldID, old.Source, old.SourceRef, supersededBy, w.importID, w.now, rowJSON); err != nil {
+		return err
+	}
+	// A row retired earlier in favour of the one now retired follows it.
+	if _, err := w.tx.Exec(`UPDATE superseded_messages SET superseded_by = ? WHERE superseded_by = ?`, supersededBy, oldID); err != nil {
+		return err
+	}
+	if _, err := w.tx.Exec(`DELETE FROM messages WHERE id = ?`, oldID); err != nil {
+		return err
+	}
+	w.counts.MessagesSuperseded++
 	return nil
 }
 

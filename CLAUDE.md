@@ -10,6 +10,14 @@
 
 A conversation and a message are each found by `(source, source_ref)`, where `source` is the **id namespace**, not the importer: `discord` (channel id, message snowflake), `skype`, `facebook-messenger`, `sms`, `matrix`/`multichat`. Keep that rule: it is what keeps the same Discord message, arriving from a data package and from multichat's log, as one row. A participant row maps a handle to people-store's `person_id`; a message stores only its `sender_handle`, and its sender person is read through the participant row, so naming a handle once (`PATCH /conversations/{id}/participants/{handle}`) names every message it sent. An import writes `person_id` only when it has one, so a person set by hand survives.
 
+## Superseded rows: one message, two ids
+
+When an importer learns a message's real id after filing it under another namespace, it names the old key in the message's `supersedes`. The store has no delete: it copies the old row whole into `superseded_messages` (`GET /superseded-messages`), removes it from `messages`, and answers its old `chat_message_…` id with a 301 to the row that holds it now. So a chip that cited the old id still lands. Sending a superseded key again is a 400, which catches an importer that went back to the old key. First use: multichat's live Discord rows, filed by multichat ref until multichat gave them their Discord message id on 2026-10-30; `message-import-multichat` now files them by snowflake, joins the rows of one Discord message (its text and each attachment) into one message, and supersedes each row's ref.
+
+## Calls with no texts
+
+`message-import-android` gives a phone number the user called or was called by, but kept no texts with, a direct `sms` conversation of its calls alone (source_ref the E.164 number, as for texts; no conversation days, since the journal had none). A call from a private or unknown number is left out and counted.
+
 ## Conversation days and journal transcripts
 
 Until 2026-10-30 chat history lived in journal-store as transcript entries, one per conversation per local day. Each importer sends a `conversation_day` for every day the old journal importer wrote, with the journal entry's exact `source` and `source_ref` and the IANA time zone the day was filed in; `POST /conversation-days/journal-entries` then records the `entry_…` id, and `GET /conversation-days?journal_entry=` answers it, so a timeline item that cites a transcript entry still lands on the messages.

@@ -237,3 +237,64 @@ func TestUnknownFieldsAreRefused(t *testing.T) {
 	ts := newTestServer(t)
 	ts.call("POST", "/imports", map[string]string{"importer": "test", "file": "x"}, http.StatusBadRequest, nil)
 }
+
+// A live copy filed under another namespace is retired by the message that
+// names it in supersedes: its row is kept whole in the superseded record,
+// its old id redirects, and sending its old key again is refused.
+func TestASupersededMessageIsKeptAsARecordAndItsIDRedirects(t *testing.T) {
+	ts := newTestServer(t)
+	importSample(ts)
+	var run Import
+	ts.call("POST", "/imports", ImportStart{Importer: "test"}, http.StatusCreated, &run)
+	liveCopy := ImportMessage{ConversationSource: "discord", ConversationSourceRef: "1000", SentAt: at("2016-03-01T12:00:00Z"), SenderHandle: "3",
+		Kind: "text", Body: "game night?", Source: "multichat", SourceRef: "message_000042", SourceHash: "a"}
+	var counts ImportCounts
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Messages: []ImportMessage{liveCopy}}, http.StatusOK, &counts)
+	var page MessagePage
+	ts.call("GET", "/messages?q=game", nil, http.StatusOK, &page)
+	if len(page.Messages) != 2 {
+		t.Fatalf("before: %d copies, want 2", len(page.Messages))
+	}
+	oldID := ""
+	for _, message := range page.Messages {
+		if message.Source == "multichat" {
+			oldID = message.ID
+		}
+	}
+
+	merged := sampleBatch().Messages[2]
+	merged.SourceHash = "b"
+	merged.Supersedes = []MessageKey{{Source: "multichat", SourceRef: "message_000042"}, {Source: "multichat", SourceRef: "message_never_stored"}}
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Messages: []ImportMessage{merged}}, http.StatusOK, &counts)
+	if counts.MessagesSuperseded != 1 || counts.MessagesUpdated != 1 {
+		t.Fatalf("counts = %+v", counts)
+	}
+	ts.call("GET", "/messages?q=game", nil, http.StatusOK, &page)
+	if len(page.Messages) != 1 || page.Messages[0].Source != "discord" {
+		t.Fatalf("after: %+v", page.Messages)
+	}
+	newID := page.Messages[0].ID
+
+	var retired []SupersededMessage
+	ts.call("GET", "/superseded-messages?superseded_by="+newID, nil, http.StatusOK, &retired)
+	var row map[string]any
+	if len(retired) != 1 || retired[0].ID != oldID || json.Unmarshal(retired[0].Row, &row) != nil || row["body"] != "game night?" || row["source_ref"] != "message_000042" {
+		t.Fatalf("superseded record = %+v", retired)
+	}
+
+	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	response, err := noFollow.Get(ts.server.URL + "/messages/" + oldID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusMovedPermanently || response.Header.Get("Location") != newID {
+		t.Fatalf("GET old id = %d Location %q", response.StatusCode, response.Header.Get("Location"))
+	}
+	var followed Message
+	ts.call("GET", "/messages/"+oldID, nil, http.StatusOK, &followed)
+	if followed.ID != newID {
+		t.Fatalf("followed to %s, want %s", followed.ID, newID)
+	}
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Messages: []ImportMessage{liveCopy}}, http.StatusBadRequest, nil)
+}

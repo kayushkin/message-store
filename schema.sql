@@ -98,3 +98,21 @@ CREATE TABLE IF NOT EXISTS imports (
     finished_at  INTEGER NOT NULL DEFAULT 0,
     counts       TEXT NOT NULL DEFAULT '{}'    -- JSON ImportCounts, summed over batches
 );
+
+-- A message that turned out to be another row's copy: the same message filed
+-- under a second id namespace before the importer knew the first (a live
+-- Discord message multichat logged before it carried the Discord id). The
+-- importer names the row it supersedes; the store copies that row here whole
+-- and removes it from messages, so nothing is lost and its old id still
+-- answers, redirected to the row that holds the message now.
+CREATE TABLE IF NOT EXISTS superseded_messages (
+    id              TEXT PRIMARY KEY,          -- the retired chat_message_ id
+    source          TEXT NOT NULL,
+    source_ref      TEXT NOT NULL,
+    superseded_by   TEXT NOT NULL,             -- the chat_message_ id that holds the message now
+    import_id       TEXT NOT NULL,             -- message_import_ that retired it
+    superseded_at   INTEGER NOT NULL,
+    row_json        TEXT NOT NULL,             -- every column of the retired row, as it was
+    UNIQUE (source, source_ref)
+);
+CREATE INDEX IF NOT EXISTS idx_superseded_messages_by ON superseded_messages(superseded_by);

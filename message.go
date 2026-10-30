@@ -1,5 +1,7 @@
 package messagestore
 
+import "encoding/json"
+
 // Wire types. generate-ts.sh renders this file and vocabulary.go to
 // ts/model.ts; a type another program reads lives here or it is not rendered.
 
@@ -160,6 +162,29 @@ type ImportMessage struct {
 	// SourceHash is the importer's hash of what it read; an unchanged hash
 	// skips the row.
 	SourceHash string `json:"source_hash"`
+	// Supersedes names rows that hold this same message under another id
+	// namespace. Each that exists is copied whole to the superseded record
+	// and removed, and its id then redirects here. Sending a superseded
+	// (source, source_ref) again is a 400.
+	Supersedes []MessageKey `json:"supersedes,omitempty"`
+}
+
+// MessageKey names a message by its id namespace and its id there.
+type MessageKey struct {
+	Source    string `json:"source"`
+	SourceRef string `json:"source_ref"`
+}
+
+// SupersededMessage is a message row retired because another row holds the
+// same message. Row is every column of the retired row, as it was.
+type SupersededMessage struct {
+	ID           string          `json:"id"`
+	Source       string          `json:"source"`
+	SourceRef    string          `json:"source_ref"`
+	SupersededBy string          `json:"superseded_by"`
+	ImportID     string          `json:"import_id"`
+	SupersededAt int64           `json:"superseded_at"`
+	Row          json.RawMessage `json:"row" tstype:"Record<string, unknown>"`
 }
 
 // ImportConversationDay names one local day of a conversation, and the
@@ -182,6 +207,7 @@ type ImportCounts struct {
 	MessagesUnchanged    int `json:"messages_unchanged"`
 	DaysCreated          int `json:"days_created"`
 	DaysUpdated          int `json:"days_updated"`
+	MessagesSuperseded   int `json:"messages_superseded"`
 }
 
 // JournalEntryLink is one item of POST /conversation-days/journal-entries: the

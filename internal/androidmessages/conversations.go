@@ -13,6 +13,9 @@ type Conversation struct {
 	// Calls are the call-log rows with the one other person of a direct
 	// conversation.
 	Calls []*Call
+	// CallsOnly is a direct conversation made for a number the user called
+	// or was called by but kept no texts with.
+	CallsOnly bool
 }
 
 // Key is the conversation's numbers joined by commas.
@@ -29,15 +32,16 @@ type Skipped struct {
 	UserNeverWrote, UserNeverWroteMessages int
 	// NoOneElse: a message with no other address at all.
 	NoOneElseMessages int
-	// CallsWithNoConversation: calls with a number the user has no kept
-	// direct conversation with; BlockedCalls: calls the phone blocked.
-	CallsWithNoConversation, BlockedCalls int
+	// CallsNotPhoneNumber: calls whose number is not a phone number (a
+	// private or unknown caller); BlockedCalls: calls the phone blocked.
+	CallsNotPhoneNumber, BlockedCalls int
 }
 
 // Conversations groups the archive's messages by who is in them and keeps
 // the conversations the user took part in: everyone a phone number, at most
 // MaximumMembers people, and at least one message from the user. Calls join
-// the direct conversation with their number.
+// the direct conversation with their number; a phone number with no kept
+// texts gets a direct conversation of its calls alone, after the others.
 func Conversations(archive *Archive) ([]*Conversation, Skipped) {
 	var skipped Skipped
 	byKey := map[string]*Conversation{}
@@ -93,8 +97,13 @@ func Conversations(archive *Archive) ([]*Conversation, Skipped) {
 		}
 		conversation := keptByKey[call.Number]
 		if conversation == nil {
-			skipped.CallsWithNoConversation++
-			continue
+			if E164(call.Number) != call.Number {
+				skipped.CallsNotPhoneNumber++
+				continue
+			}
+			conversation = &Conversation{Others: []string{call.Number}, CallsOnly: true}
+			keptByKey[call.Number] = conversation
+			kept = append(kept, conversation)
 		}
 		conversation.Calls = append(conversation.Calls, call)
 	}

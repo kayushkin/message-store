@@ -17,7 +17,9 @@
 // conversations and groups of at most eight people the user wrote in are
 // imported, and a message that is a login code or a password keeps no text.
 // A call joins the direct conversation with its number on any day, texts or
-// none; a call with a number the user never texted is left out and counted.
+// none; a phone number the user kept no texts with gets a direct conversation
+// of its calls alone. A call from a private or unknown number is left out and
+// counted.
 //
 // A conversation is source sms, source_ref the other people's E.164 numbers,
 // sorted and joined by commas. Each number is named through people-store and
@@ -155,9 +157,16 @@ func (run runner) run(out io.Writer) error {
 	fmt.Fprintf(out, "kept %d messages and %d calls once each; %d numbers of the user's own seen on picture messages\n",
 		len(archive.Messages), len(archive.Calls), len(archive.SelfNumbers))
 	conversations, skipped := androidmessages.Conversations(archive)
-	fmt.Fprintf(out, "%d conversations kept; left out: %d with a short code or email address (%d messages), %d of more than %d people (%d messages), %d the user never wrote in (%d messages), %d messages with no one else; %d calls with no kept direct conversation, %d blocked calls\n",
+	callsOnly, callsOnlyCalls := 0, 0
+	for _, conversation := range conversations {
+		if conversation.CallsOnly {
+			callsOnly++
+			callsOnlyCalls += len(conversation.Calls)
+		}
+	}
+	fmt.Fprintf(out, "%d conversations kept; left out: %d with a short code or email address (%d messages), %d of more than %d people (%d messages), %d the user never wrote in (%d messages), %d messages with no one else; %d calls from no phone number, %d blocked calls; %d of the kept are numbers with calls and no texts (%d calls)\n",
 		len(conversations), skipped.NotPhoneNumber, skipped.NotPhoneNumberMessages, skipped.TooBig, androidmessages.MaximumMembers, skipped.TooBigMessages,
-		skipped.UserNeverWrote, skipped.UserNeverWroteMessages, skipped.NoOneElseMessages, skipped.CallsWithNoConversation, skipped.BlockedCalls)
+		skipped.UserNeverWrote, skipped.UserNeverWroteMessages, skipped.NoOneElseMessages, skipped.CallsNotPhoneNumber, skipped.BlockedCalls, callsOnly, callsOnlyCalls)
 
 	people, err := run.resolvePeople(append([]string{run.selfNumber}, othersOf(conversations)...))
 	if err != nil {

@@ -10,7 +10,8 @@ a bad request (an unknown field included), 404 for a missing id.
 | `GET /vocabulary` | platforms, message kinds, activity groupings and intervals |
 | `GET /summary` | conversations and messages per platform, with first and last times |
 | `GET /messages` | messages in time order. `conversation` (repeatable), `person`, `platform`, `after`, `before`, `q` (full text), `order=oldest\|newest`, `limit` (≤5000, default 500), `cursor` (the last page's `next`) |
-| `GET /messages/{id}` | one message |
+| `GET /messages/{id}` | one message; a superseded id is a 301 whose relative `Location` is the message that holds it now |
+| `GET /superseded-messages` | retired rows, newest first, each with its whole old row as `row`. `superseded_by`, `limit` |
 | `GET /conversations` | most recently active first. `person`, `platform`, `q` (title or participant name), `limit` |
 | `GET /conversations/{id}` | one conversation, participants and message summary |
 | `PATCH /conversations/{id}/participants/{handle}` | `{"person_id":"person_000001"}` names the handle's person; `""` clears it |
@@ -32,6 +33,11 @@ a bad request (an unknown field included), 404 for a missing id.
 - A message is found by `(source, source_ref)`. The same `source_hash` skips it;
   another hash rewrites it. A sender handle the conversation never listed gets a
   participant row.
+- A message's `supersedes` lists `(source, source_ref)` keys of rows that hold
+  the same message under another id namespace. Each that exists is copied
+  whole to `superseded_messages` (with the import and the message that
+  replaced it) and removed from `messages`; its id then redirects. Sending a
+  superseded key again is a 400. A batch counts them as `messages_superseded`.
 - A conversation day is found by `(conversation, day)`; its span is computed from
   `day` and `time_zone`.
 

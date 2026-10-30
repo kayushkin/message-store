@@ -18,7 +18,9 @@ const MaximumMembers = 8
 
 // Id namespaces. A row that carries a Discord message id is filed under
 // discord, as the Discord data package files it, so the two collapse into one
-// row; every other row is filed by multichat's own row ref. Every Discord
+// row; every other row is filed by multichat's own row ref. Until multichat
+// gave live Discord rows their Discord id (2026-10-30) they were filed by
+// ref, so a live Discord message names its rows' refs in supersedes. Every Discord
 // conversation is its channel, and every other conversation its Matrix room.
 const (
 	SourceDiscord   = "discord"
@@ -290,6 +292,87 @@ func (c converter) message(row loggedMessage) (messagestore.ImportMessage, error
 	c.attachPhotos(&message, row.Ref)
 	message.SourceHash = importclient.MessageHash(message)
 	return message, nil
+}
+
+// messages converts the imported rows, newest first. The live rows of one
+// Discord message (its text and each attachment) become one message.
+func (c converter) messages(rows []loggedMessage) ([]messagestore.ImportMessage, error) {
+	parts := map[string][]loggedMessage{}
+	for _, row := range rows {
+		if row.Source == "matrix" && row.DiscordMessageID != "" {
+			parts[row.DiscordMessageID] = append(parts[row.DiscordMessageID], row)
+		}
+	}
+	var out []messagestore.ImportMessage
+	done := map[string]bool{}
+	for _, row := range rows {
+		group := []loggedMessage{row}
+		if row.Source == "matrix" && row.DiscordMessageID != "" {
+			if done[row.DiscordMessageID] {
+				continue
+			}
+			done[row.DiscordMessageID] = true
+			group = parts[row.DiscordMessageID]
+		}
+		message, err := c.joinParts(group)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, message)
+	}
+	return out, nil
+}
+
+// joinParts converts the rows of one message. Rows of a live Discord message
+// share its id: the text comes from the part that has it, attachments from
+// every part in the order multichat logged them, and the message counts as
+// deleted only when every part is. Each live row's multichat ref is
+// superseded.
+func (c converter) joinParts(rows []loggedMessage) (messagestore.ImportMessage, error) {
+	sorted := append([]loggedMessage(nil), rows...)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Ref < sorted[j].Ref })
+	var converted []messagestore.ImportMessage
+	for _, row := range sorted {
+		message, err := c.message(row)
+		if err != nil {
+			return messagestore.ImportMessage{}, err
+		}
+		converted = append(converted, message)
+	}
+	joined := converted[0]
+	for _, part := range converted {
+		if part.Body != "" && part.Kind == "text" {
+			joined = part
+			break
+		}
+	}
+	if len(converted) > 1 {
+		joined.Attachments = []messagestore.Attachment{}
+		allDeleted := true
+		for _, part := range converted {
+			joined.Attachments = append(joined.Attachments, part.Attachments...)
+			joined.Edited = joined.Edited || part.Edited
+			allDeleted = allDeleted && part.DeletedOnPlatform
+			if part.SentAt < joined.SentAt {
+				joined.SentAt = part.SentAt
+			}
+			if joined.ReplyToSourceRef == "" {
+				joined.ReplyToSourceRef = part.ReplyToSourceRef
+			}
+		}
+		joined.DeletedOnPlatform = allDeleted
+		if joined.Body == "" && len(joined.Attachments) > 0 && joined.Kind != "sticker" {
+			joined.Kind = "media"
+		}
+	}
+	for _, row := range sorted {
+		if row.Source == "matrix" && row.DiscordMessageID != "" {
+			joined.Supersedes = append(joined.Supersedes, messagestore.MessageKey{Source: SourceMultichat, SourceRef: row.Ref})
+		}
+	}
+	joined.SourceHash = ""
+	joined.SourceHash = importclient.MessageHash(joined)
+	return joined, nil
 }
 
 // attachPhotos gives each picture or video the photo-store id photo-store

@@ -192,3 +192,33 @@ func TestGatherReadsTheWindowAndWhatItPointsAt(t *testing.T) {
 		t.Errorf("the replied-to message was not read: unresolved %d", windowed.unresolved)
 	}
 }
+
+// The live rows of one Discord message (its text and a picture) become one
+// message filed under the Discord id, superseding both rows' refs; a live row
+// with no Discord id stays filed by its ref.
+func TestLiveDiscordPartsJoinIntoOneMessage(t *testing.T) {
+	text := row(1, 0, "!dm:example.org")
+	text.Platform, text.ChannelID, text.SenderUserID, text.DiscordMessageID = "discord", "700", "@discord_9:example.org", "5100"
+	picture := text
+	picture.Ref, picture.EventID, picture.MessageType, picture.Body, picture.MediaMimetype = "message_100002", "$e2", "m.image", "cat.png", "image/png"
+	picture.ContentJSON = `{"filename":"cat.png"}`
+	alone := row(3, 1, "!dm:example.org")
+	alone.Platform, alone.ChannelID, alone.SenderUserID = "discord", "700", "@discord_9:example.org"
+	c := converter{rooms: testRooms(), people: map[string]string{}, events: map[string]loggedMessage{}, edits: map[string][]loggedMessage{}}
+	messages, err := c.messages([]loggedMessage{alone, picture, text})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 2 {
+		t.Fatalf("%d messages, want 2: %+v", len(messages), messages)
+	}
+	joined := messages[1]
+	if joined.Source != "discord" || joined.SourceRef != "5100" || joined.Body != "words 1" || joined.Kind != "text" ||
+		len(joined.Attachments) != 1 || joined.Attachments[0].Name != "cat.png" || len(joined.Supersedes) != 2 ||
+		joined.Supersedes[0].SourceRef != "message_100001" || joined.Supersedes[1].SourceRef != "message_100002" {
+		t.Fatalf("joined = %+v", joined)
+	}
+	if messages[0].Source != "multichat" || messages[0].SourceRef != alone.Ref || len(messages[0].Supersedes) != 0 {
+		t.Fatalf("a row with no Discord id = %+v", messages[0])
+	}
+}

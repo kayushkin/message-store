@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,6 +23,7 @@ func RegisterHandlers(mux *http.ServeMux, s *Store) {
 
 	mux.HandleFunc("GET /messages", h.listMessages)
 	mux.HandleFunc("GET /messages/{id}", h.getMessage)
+	mux.HandleFunc("GET /superseded-messages", h.listSupersededMessages)
 
 	mux.HandleFunc("GET /conversations", h.listConversations)
 	mux.HandleFunc("GET /conversations/{id}", h.getConversation)
@@ -158,11 +160,32 @@ func (h *handler) listMessages(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) getMessage(w http.ResponseWriter, r *http.Request) {
 	message, err := h.s.GetMessage(r.PathValue("id"))
+	var superseded ErrSuperseded
+	if errors.As(err, &superseded) {
+		// Relative, so it holds behind a proxy's prefix.
+		w.Header().Set("Location", url.PathEscape(superseded.SupersededBy))
+		writeJSON(w, http.StatusMovedPermanently, map[string]string{"error": superseded.Error(), "superseded_by": superseded.SupersededBy})
+		return
+	}
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, message)
+}
+
+func (h *handler) listSupersededMessages(w http.ResponseWriter, r *http.Request) {
+	limit, err := queryLimit(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	superseded, err := h.s.ListSupersededMessages(r.URL.Query().Get("superseded_by"), limit)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, superseded)
 }
 
 func (h *handler) listConversations(w http.ResponseWriter, r *http.Request) {

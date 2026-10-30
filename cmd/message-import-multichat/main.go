@@ -10,9 +10,13 @@
 // other room only when -room names it. A room multichat no longer lists is
 // left out unless -room names it, since its size is unknown.
 //
-// A row is filed by its Discord message id when it has one (rows multichat
-// imported from a Discord history fetch), so it is the same row the Discord
-// data package writes; every other row by its multichat ref. Every Discord
+// A row is filed by its Discord message id when it has one, so it is the
+// same row the Discord data package writes; every other row by its multichat
+// ref. multichat gives the id to rows it imported from a Discord history
+// fetch and to live Discord rows; a live Discord message that is text and
+// attachments is several rows sharing the id, joined here into one message.
+// A live row stored under its multichat ref before it carried the id is
+// named in supersedes, and message-store retires it. Every Discord
 // conversation is its channel; every other conversation its Matrix room. An
 // edit rewrites the message's text and marks it edited; a delete marks it
 // deleted on the platform and keeps the text. Pictures are cited by the
@@ -290,11 +294,14 @@ func (run runner) run(out io.Writer) error {
 			return err
 		}
 	}
-	photoCount := 0
-	for _, row := range read.imported {
-		message, err := c.message(row)
-		if err != nil {
-			return err
+	messages, err := c.messages(read.imported)
+	if err != nil {
+		return err
+	}
+	photoCount, merged := 0, 0
+	for _, message := range messages {
+		if len(message.Supersedes) > 1 {
+			merged++
 		}
 		for _, attachment := range message.Attachments {
 			if attachment.PhotoID != "" {
@@ -308,7 +315,8 @@ func (run runner) run(out io.Writer) error {
 	if err := client.Finish(); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "%d photo-store pictures cited\n", photoCount)
+	fmt.Fprintf(out, "%d messages from %d rows (%d Discord messages joined from several rows); %d photo-store pictures cited\n",
+		len(messages), len(read.imported), merged, photoCount)
 	fmt.Fprintln(out, client.Report())
 	return nil
 }
