@@ -14,6 +14,10 @@ A conversation and a message are each found by `(source, source_ref)`, where `so
 
 When an importer learns a message's real id after filing it under another namespace, it names the old key in the message's `supersedes`. The store has no delete: it copies the old row whole into `superseded_messages` (`GET /superseded-messages`), removes it from `messages`, and answers its old `chat_message_…` id with a 301 to the row that holds it now. So a chip that cited the old id still lands. Sending a superseded key again is a 400, which catches an importer that went back to the old key. First use: multichat's live Discord rows, filed by multichat ref until multichat gave them their Discord message id on 2026-10-30; `message-import-multichat` now files them by snowflake, joins the rows of one Discord message (its text and each attachment) into one message, and supersedes each row's ref.
 
+## Texts carried twice by multichat
+
+Texts reach multichat by two paths, each with its own Matrix room per conversation: the mautrix Google Messages bridge (`gmessages`, exact times) and gmessages-web-bridge (`gmessagesweb`, times cut to the minute). Both rooms name Google's conversation id in their `m.bridge` channel (the bridge as `<login prefix>.<id>`, the web bridge as base64url protobuf with the id in field 2). `message-import-multichat` reads every row of both platforms each run, pairs a web row with the bridge row in the twin room that has the same text in the same minute, files it as the bridge row and supersedes the web row's ref (`cmd/message-import-multichat/google_messages_twins.go`). The two rooms stay two conversations: web-only texts (older history the bridge never synced) stay in the web room's conversation.
+
 ## Calls with no texts
 
 `message-import-android` gives a phone number the user called or was called by, but kept no texts with, a direct `sms` conversation of its calls alone (source_ref the E.164 number, as for texts; no conversation days, since the journal had none). A call from a private or unknown number is left out and counted.

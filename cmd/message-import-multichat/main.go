@@ -161,6 +161,8 @@ func (m multichatClient) get(path string, query url.Values, out any) error {
 type logReader struct {
 	multichat multichatClient
 	deleted   bool
+	// platform, when set, reads only that multichat platform.
+	platform string
 	// before is the oldest moment read so far; zero before the first page.
 	before time.Time
 	seen   map[string]bool
@@ -173,6 +175,9 @@ func (r *logReader) next() (logPage, error) {
 		query := url.Values{"limit": {fmt.Sprint(pageSize)}, "include_edits": {"true"}}
 		if r.deleted {
 			query.Set("deleted", "true")
+		}
+		if r.platform != "" {
+			query.Set("platform", r.platform)
 		}
 		if !r.before.IsZero() {
 			query.Set("before", r.before.Add(nudge).UTC().Format(time.RFC3339Nano))
@@ -265,7 +270,16 @@ func (run runner) run(out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	c := converter{rooms: rooms, people: people, selfPerson: run.selfPerson, selfUserIDs: selfUserIDs, photos: photos, events: read.events, edits: read.edits}
+	googleMessagesRows, err := readGoogleMessagesRows(run.multichat)
+	if err != nil {
+		return err
+	}
+	twins := matchGoogleMessagesTwins(googleMessagesRows)
+	read.imported = twins.apply(read.imported, run.selection, rooms)
+	fmt.Fprintf(out, "Google Messages: %d web rooms have a bridge room for the same conversation, %d do not, %d have a conversation id this command cannot read; %d web rows are the same message as a bridge row and are filed as it\n",
+		twins.twinRooms, twins.webRoomsWithoutTwin, twins.unreadableWebRooms, len(twins.bridgeRowOfWebRow))
+	c := converter{rooms: rooms, people: people, selfPerson: run.selfPerson, selfUserIDs: selfUserIDs, photos: photos, events: read.events, edits: read.edits,
+		supersededByRow: twins.webRefsOfBridgeRow}
 	conversations, err := c.conversations(read.imported)
 	if err != nil {
 		return err

@@ -222,3 +222,49 @@ func TestLiveDiscordPartsJoinIntoOneMessage(t *testing.T) {
 		t.Fatalf("a row with no Discord id = %+v", messages[0])
 	}
 }
+
+func TestProtobufField2ReadsTheWebConversationToken(t *testing.T) {
+	for token, want := range map[string]string{"EgM5MTU": "915", "CggBAgMEBQYHCBIDOTE1": "915", "bridge-self-test-1": "", "": ""} {
+		if got := protobufField2(token); got != want {
+			t.Errorf("protobufField2(%q) = %q, want %q", token, got, want)
+		}
+	}
+}
+
+// A text both Google Messages paths carried is filed once, as the bridge row,
+// superseding the web row; a web row with no twin and a twin room's other
+// texts stay as they are.
+func TestGoogleMessagesWebRowsAreFiledAsTheirBridgeTwin(t *testing.T) {
+	rooms := map[string]room{
+		"!bridge:example.org": {RoomID: "!bridge:example.org", Platform: "gmessages", MemberCount: 2},
+		"!web:example.org":    {RoomID: "!web:example.org", Platform: "gmessagesweb", MemberCount: 2},
+	}
+	googleRow := func(id int, platform, roomID, channelID string, sent time.Time, body string) loggedMessage {
+		return loggedMessage{Ref: "message_" + strconv.Itoa(100000+id), EventID: "$g" + strconv.Itoa(id), Source: "matrix", RoomID: roomID,
+			Platform: platform, ChannelID: channelID, SenderUserID: "@" + platform + "_7:example.org", MessageType: "m.text", Body: body, ContentJSON: "{}", SentAt: sent}
+	}
+	exact := base.Add(42*time.Second + 300*time.Millisecond)
+	bridgeText := googleRow(1, "gmessages", "!bridge:example.org", "1.915", exact, "see you at six")
+	webText := googleRow(2, "gmessagesweb", "!web:example.org", "CggBAgMEBQYHCBIDOTE1", base, "see you at six")
+	webOnly := googleRow(3, "gmessagesweb", "!web:example.org", "CggBAgMEBQYHCBIDOTE1", base.Add(-time.Hour), "older, before the bridge")
+	bridgeOther := googleRow(4, "gmessages", "!bridge:example.org", "1.915", exact.Add(time.Minute), "see you at six")
+	twins := matchGoogleMessagesTwins([]loggedMessage{bridgeText, webText, webOnly, bridgeOther})
+	if twins.twinRooms != 1 || len(twins.bridgeRowOfWebRow) != 1 || twins.bridgeRowOfWebRow[webText.Ref].Ref != bridgeText.Ref {
+		t.Fatalf("twins = %+v", twins)
+	}
+	// A window that read only the web rows still files the text as the
+	// bridge row.
+	imported := twins.apply([]loggedMessage{webText, webOnly}, selection{}, rooms)
+	if len(imported) != 2 || imported[0].Ref != bridgeText.Ref || imported[1].Ref != webOnly.Ref {
+		t.Fatalf("imported = %+v", imported)
+	}
+	c := converter{rooms: rooms, people: map[string]string{}, events: map[string]loggedMessage{}, edits: map[string][]loggedMessage{}, supersededByRow: twins.webRefsOfBridgeRow}
+	messages, err := c.messages(imported)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if messages[0].SourceRef != bridgeText.Ref || len(messages[0].Supersedes) != 1 || messages[0].Supersedes[0].SourceRef != webText.Ref ||
+		len(messages[1].Supersedes) != 0 {
+		t.Fatalf("messages = %+v", messages)
+	}
+}

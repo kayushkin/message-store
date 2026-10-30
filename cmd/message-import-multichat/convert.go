@@ -161,6 +161,9 @@ type converter struct {
 	events map[string]loggedMessage
 	// edits are the edits read, by the event id they edit, oldest first.
 	edits map[string][]loggedMessage
+	// supersededByRow are, by a row's ref, the refs of other rows that are
+	// the same message and are filed as it (google_messages_twins.go).
+	supersededByRow map[string][]string
 }
 
 // photoRef is one photo-store photo of a message.
@@ -368,6 +371,11 @@ func (c converter) joinParts(rows []loggedMessage) (messagestore.ImportMessage, 
 	for _, row := range sorted {
 		if row.Source == "matrix" && row.DiscordMessageID != "" {
 			joined.Supersedes = append(joined.Supersedes, messagestore.MessageKey{Source: SourceMultichat, SourceRef: row.Ref})
+		}
+	}
+	for _, row := range sorted {
+		for _, ref := range c.supersededByRow[row.Ref] {
+			joined.Supersedes = append(joined.Supersedes, messagestore.MessageKey{Source: SourceMultichat, SourceRef: ref})
 		}
 	}
 	joined.SourceHash = ""
