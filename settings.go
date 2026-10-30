@@ -28,6 +28,13 @@ const (
 	// SettingJournalStoreURL is where the journal link command reads
 	// transcripts.
 	SettingJournalStoreURL = "journal_store_url"
+	// SettingPeopleStoreURL is where the importers name a handle's person.
+	SettingPeopleStoreURL = "people_store_url"
+	// SettingMultichatURL and SettingMultichatToken are where
+	// message-import-multichat reads multichat's message log, and the bearer
+	// token it sends.
+	SettingMultichatURL   = "multichat_url"
+	SettingMultichatToken = "multichat_token"
 )
 
 // DefaultListenAddress is loopback, deliberately: these are private messages,
@@ -75,7 +82,8 @@ func StoreURLDefinition() servicesettings.Definition {
 // reads. An importer that reads more adds its own definitions here, so the
 // settings test sees them.
 func ImporterSettingDefinitions() []servicesettings.Definition {
-	return []servicesettings.Definition{StoreURLDefinition(), PhotoStoreURLDefinition(), JournalStoreURLDefinition()}
+	return []servicesettings.Definition{StoreURLDefinition(), PhotoStoreURLDefinition(), JournalStoreURLDefinition(),
+		PeopleStoreURLDefinition(), MultichatURLDefinition(), MultichatTokenDefinition()}
 }
 
 // PhotoStoreURLDefinition is where photo-store answers: the chat importers
@@ -90,6 +98,27 @@ func PhotoStoreURLDefinition() servicesettings.Definition {
 func JournalStoreURLDefinition() servicesettings.Definition {
 	return servicesettings.Definition{Key: SettingJournalStoreURL, EnvironmentVariable: "JOURNAL_STORE_URL", Kind: msg.ServiceSettingKindWiring, ValueType: msg.ServiceSettingValueTypeString, Default: "http://127.0.0.1:8322",
 		Description: "Where journal-store answers: message-link-journal-transcripts reads transcript entries there."}
+}
+
+// PeopleStoreURLDefinition is where people-store answers: an importer asks
+// it whose a phone number or chat account is.
+func PeopleStoreURLDefinition() servicesettings.Definition {
+	return servicesettings.Definition{Key: SettingPeopleStoreURL, EnvironmentVariable: "PEOPLE_STORE_URL", Kind: msg.ServiceSettingKindWiring, ValueType: msg.ServiceSettingValueTypeString, Default: "http://127.0.0.1:8321",
+		Description: "Where people-store answers: an importer asks GET /identities/resolve whose each handle is."}
+}
+
+// MultichatURLDefinition is multichat's API root, the prefix of
+// GET /message-log and GET /conversations.
+func MultichatURLDefinition() servicesettings.Definition {
+	return servicesettings.Definition{Key: SettingMultichatURL, EnvironmentVariable: "MULTICHAT_URL", Kind: msg.ServiceSettingKindWiring, ValueType: msg.ServiceSettingValueTypeString, Default: "http://127.0.0.1:8402/api",
+		Description: "multichat's API root: message-import-multichat reads GET /message-log and GET /conversations under it."}
+}
+
+// MultichatTokenDefinition is the bearer token multichat asks for. Only
+// message-import-multichat needs it, and it refuses to start without one.
+func MultichatTokenDefinition() servicesettings.Definition {
+	return servicesettings.Definition{Key: SettingMultichatToken, EnvironmentVariable: "MULTICHAT_TOKEN", Kind: msg.ServiceSettingKindSecret, ValueType: msg.ServiceSettingValueTypeString,
+		Description: "The bearer token multichat's API asks for. message-import-multichat sends it and never prints it."}
 }
 
 // NewImporterSettingsRegistry reads an importer's settings. It owns no

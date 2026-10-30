@@ -1,0 +1,102 @@
+package androidmessages
+
+import "strings"
+
+// MaximumMembers is the most people, the user included, a conversation may
+// have to be imported: direct conversations and small groups.
+const MaximumMembers = 8
+
+// Conversation is everyone but the user (Others) and what was said.
+type Conversation struct {
+	Others   []string
+	Messages []*Message
+	// Calls are the call-log rows with the one other person of a direct
+	// conversation.
+	Calls []*Call
+}
+
+// Key is the conversation's numbers joined by commas.
+func (conversation *Conversation) Key() string { return strings.Join(conversation.Others, ",") }
+
+// Skipped counts what Conversations left out, conversations and their
+// messages.
+type Skipped struct {
+	// NotPhoneNumber: someone in it is a short code or an email address.
+	NotPhoneNumber, NotPhoneNumberMessages int
+	// TooBig: more than MaximumMembers people.
+	TooBig, TooBigMessages int
+	// UserNeverWrote: the user sent nothing in it (alerts, codes, mass texts).
+	UserNeverWrote, UserNeverWroteMessages int
+	// NoOneElse: a message with no other address at all.
+	NoOneElseMessages int
+	// CallsWithNoConversation: calls with a number the user has no kept
+	// direct conversation with; BlockedCalls: calls the phone blocked.
+	CallsWithNoConversation, BlockedCalls int
+}
+
+// Conversations groups the archive's messages by who is in them and keeps
+// the conversations the user took part in: everyone a phone number, at most
+// MaximumMembers people, and at least one message from the user. Calls join
+// the direct conversation with their number.
+func Conversations(archive *Archive) ([]*Conversation, Skipped) {
+	var skipped Skipped
+	byKey := map[string]*Conversation{}
+	var order []string
+	for _, message := range archive.Messages {
+		if len(message.Others) == 0 {
+			skipped.NoOneElseMessages++
+			continue
+		}
+		key := strings.Join(message.Others, ",")
+		conversation := byKey[key]
+		if conversation == nil {
+			conversation = &Conversation{Others: message.Others}
+			byKey[key] = conversation
+			order = append(order, key)
+		}
+		conversation.Messages = append(conversation.Messages, message)
+	}
+	var kept []*Conversation
+	keptByKey := map[string]*Conversation{}
+	for _, key := range order {
+		conversation := byKey[key]
+		count := len(conversation.Messages)
+		notPhone := false
+		for _, other := range conversation.Others {
+			if E164(other) != other {
+				notPhone = true
+			}
+		}
+		userWrote := false
+		for _, message := range conversation.Messages {
+			userWrote = userWrote || message.FromSelf
+		}
+		switch {
+		case notPhone:
+			skipped.NotPhoneNumber++
+			skipped.NotPhoneNumberMessages += count
+		case len(conversation.Others)+1 > MaximumMembers:
+			skipped.TooBig++
+			skipped.TooBigMessages += count
+		case !userWrote:
+			skipped.UserNeverWrote++
+			skipped.UserNeverWroteMessages += count
+		default:
+			kept = append(kept, conversation)
+			keptByKey[key] = conversation
+		}
+	}
+	for _, call := range archive.Calls {
+		if call.Type == CallBlocked {
+			skipped.BlockedCalls++
+			continue
+		}
+		conversation := keptByKey[call.Number]
+		if conversation == nil {
+			skipped.CallsWithNoConversation++
+			continue
+		}
+		conversation.Calls = append(conversation.Calls, call)
+	}
+	return kept, skipped
+}
