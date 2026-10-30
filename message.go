@@ -80,7 +80,7 @@ type ConversationDay struct {
 // ConversationDayWithMessages is GET /conversation-days/{id}: the day, its
 // conversation and its messages in time order.
 type ConversationDayWithMessages struct {
-	ConversationDay
+	ConversationDay `tstype:",extends"`
 	Conversation Conversation `json:"conversation"`
 	Messages     []Message    `json:"messages"`
 }
