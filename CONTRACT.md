@@ -36,8 +36,14 @@ a bad request (an unknown field included), 404 for a missing id.
 - A message's `supersedes` lists `(source, source_ref)` keys of rows that hold
   the same message under another id namespace. Each that exists is copied
   whole to `superseded_messages` (with the import and the message that
-  replaced it) and removed from `messages`; its id then redirects. Sending a
-  superseded key again is a 400. A batch counts them as `messages_superseded`.
+  replaced it) and removed from `messages`; its id then redirects. A batch
+  counts them as `messages_superseded`. A message sent again under a
+  superseded key is skipped and counted as `messages_superseded_skipped`.
+- A batch's `supersessions` (`[{"superseded":{source,source_ref},"by":{source,source_ref}}]`,
+  applied after its messages) retire a row in favour of a message already
+  stored, for an importer that does not own that message. A `by` that is not
+  stored is a 400; a `superseded` that is not stored, or already retired, is
+  nothing to do.
 - A conversation day is found by `(conversation, day)`; its span is computed from
   `day` and `time_zone`.
 

@@ -143,6 +143,12 @@ func (s *Store) ApplyBatch(importID string, batch ImportBatch) (ImportCounts, er
 			return ImportCounts{}, fmt.Errorf("message %d (%s %s): %w", i, message.Source, message.SourceRef, err)
 		}
 	}
+	for i, supersession := range batch.Supersessions {
+		if err := w.applySupersession(supersession); err != nil {
+			return ImportCounts{}, fmt.Errorf("supersession %d (%s %s by %s %s): %w", i, supersession.Superseded.Source, supersession.Superseded.SourceRef,
+				supersession.By.Source, supersession.By.SourceRef, err)
+		}
+	}
 	for i, day := range batch.ConversationDays {
 		if err := w.upsertDay(day); err != nil {
 			return ImportCounts{}, fmt.Errorf("conversation day %d (%s %s %s): %w", i, day.ConversationSource, day.ConversationSourceRef, day.Day, err)
@@ -173,6 +179,23 @@ func (c *ImportCounts) add(other ImportCounts) {
 	c.DaysCreated += other.DaysCreated
 	c.DaysUpdated += other.DaysUpdated
 	c.MessagesSuperseded += other.MessagesSuperseded
+	c.MessagesSupersededSkipped += other.MessagesSupersededSkipped
+}
+
+// applySupersession retires a row in favour of a stored message.
+func (w *batchWriter) applySupersession(supersession ImportSupersession) error {
+	if supersession.By.Source == "" || supersession.By.SourceRef == "" {
+		return fmt.Errorf("%w: by needs source and source_ref", ErrInvalid)
+	}
+	var byID string
+	err := w.tx.QueryRow(`SELECT id FROM messages WHERE source = ? AND source_ref = ?`, supersession.By.Source, supersession.By.SourceRef).Scan(&byID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: no message %s %s to supersede with", ErrInvalid, supersession.By.Source, supersession.By.SourceRef)
+	}
+	if err != nil {
+		return err
+	}
+	return w.supersede(supersession.Superseded, byID)
 }
 
 func (w *batchWriter) conversationID(source, sourceRef string) (string, error) {
@@ -259,10 +282,12 @@ func (w *batchWriter) upsertMessage(message ImportMessage) error {
 	if message.SentAt <= 0 {
 		return fmt.Errorf("%w: sent_at is required", ErrInvalid)
 	}
+	// Another row holds a message whose key was superseded: skip it.
 	var retiredAs string
 	err := w.tx.QueryRow(`SELECT superseded_by FROM superseded_messages WHERE source = ? AND source_ref = ?`, message.Source, message.SourceRef).Scan(&retiredAs)
 	if err == nil {
-		return fmt.Errorf("%w: %s %s was superseded by %s; send that message's own source and source_ref", ErrInvalid, message.Source, message.SourceRef, retiredAs)
+		w.counts.MessagesSupersededSkipped++
+		return nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}

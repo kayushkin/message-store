@@ -104,6 +104,14 @@ func (c *Client) AddConversationDay(day messagestore.ImportConversationDay) erro
 	return c.queued()
 }
 
+// AddSupersession queues the retirement of a row in favour of a stored
+// message.
+func (c *Client) AddSupersession(supersession messagestore.ImportSupersession) error {
+	c.Read["supersessions"]++
+	c.batch.Supersessions = append(c.batch.Supersessions, supersession)
+	return c.queued()
+}
+
 func (c *Client) queued() error {
 	c.pending++
 	if c.pending >= BatchSize {
@@ -133,6 +141,8 @@ func (c *Client) Flush() error {
 	c.Written.MessagesUnchanged += counts.MessagesUnchanged
 	c.Written.DaysCreated += counts.DaysCreated
 	c.Written.DaysUpdated += counts.DaysUpdated
+	c.Written.MessagesSuperseded += counts.MessagesSuperseded
+	c.Written.MessagesSupersededSkipped += counts.MessagesSupersededSkipped
 	return nil
 }
 
@@ -154,6 +164,7 @@ func (c *Client) Report() string {
 			c.Read["conversations"], c.Read["messages"], c.Read["conversation_days"])
 	}
 	w := c.Written
-	return fmt.Sprintf("%s: conversations %d new, %d changed; messages %d new, %d changed, %d unchanged; days %d new, %d changed",
-		c.importID, w.ConversationsCreated, w.ConversationsUpdated, w.MessagesCreated, w.MessagesUpdated, w.MessagesUnchanged, w.DaysCreated, w.DaysUpdated)
+	return fmt.Sprintf("%s: conversations %d new, %d changed; messages %d new, %d changed, %d unchanged, %d superseded, %d skipped as already superseded; days %d new, %d changed",
+		c.importID, w.ConversationsCreated, w.ConversationsUpdated, w.MessagesCreated, w.MessagesUpdated, w.MessagesUnchanged, w.MessagesSuperseded,
+		w.MessagesSupersededSkipped, w.DaysCreated, w.DaysUpdated)
 }

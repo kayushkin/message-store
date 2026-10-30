@@ -296,5 +296,41 @@ func TestASupersededMessageIsKeptAsARecordAndItsIDRedirects(t *testing.T) {
 	if followed.ID != newID {
 		t.Fatalf("followed to %s, want %s", followed.ID, newID)
 	}
-	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Messages: []ImportMessage{liveCopy}}, http.StatusBadRequest, nil)
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Messages: []ImportMessage{liveCopy}}, http.StatusOK, &counts)
+	if counts.MessagesSupersededSkipped != 1 || counts.MessagesCreated != 0 || counts.MessagesUpdated != 0 {
+		t.Fatalf("resending a superseded key: counts = %+v", counts)
+	}
+	ts.call("GET", "/messages?q=game", nil, http.StatusOK, &page)
+	if len(page.Messages) != 1 {
+		t.Fatalf("resending a superseded key made %d copies", len(page.Messages))
+	}
+}
+
+// A supersession retires an importer's own row in favour of a message another
+// importer stored, without touching that message; again, it does nothing.
+func TestASupersessionRetiresARowInFavourOfAStoredMessage(t *testing.T) {
+	ts := newTestServer(t)
+	importSample(ts)
+	var run Import
+	ts.call("POST", "/imports", ImportStart{Importer: "test"}, http.StatusCreated, &run)
+	liveCopy := ImportMessage{ConversationSource: "skype", ConversationSourceRef: "chat-carol", SentAt: at("2016-03-02T00:30:00Z"), SenderHandle: "me_self",
+		Kind: "text", Body: "hi Carol", Source: "multichat", SourceRef: "message_000077", SourceHash: "x"}
+	var counts ImportCounts
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Messages: []ImportMessage{liveCopy}}, http.StatusOK, &counts)
+	supersession := ImportSupersession{Superseded: MessageKey{Source: "multichat", SourceRef: "message_000077"}, By: MessageKey{Source: "skype", SourceRef: "r2"}}
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Supersessions: []ImportSupersession{supersession}}, http.StatusOK, &counts)
+	if counts.MessagesSuperseded != 1 {
+		t.Fatalf("counts = %+v", counts)
+	}
+	var page MessagePage
+	ts.call("GET", "/messages?q=Carol", nil, http.StatusOK, &page)
+	if len(page.Messages) != 1 || page.Messages[0].Source != "skype" || page.Messages[0].ImportedBy == run.ID {
+		t.Fatalf("after: %+v", page.Messages)
+	}
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Supersessions: []ImportSupersession{supersession}, Messages: []ImportMessage{liveCopy}}, http.StatusOK, &counts)
+	if counts.MessagesSuperseded != 0 || counts.MessagesSupersededSkipped != 1 {
+		t.Fatalf("again: counts = %+v", counts)
+	}
+	missing := ImportSupersession{Superseded: supersession.Superseded, By: MessageKey{Source: "skype", SourceRef: "never-stored"}}
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Supersessions: []ImportSupersession{missing}}, http.StatusBadRequest, nil)
 }

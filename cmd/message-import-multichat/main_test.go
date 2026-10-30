@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	messagestore "github.com/kayushkin/message-store"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -266,5 +267,47 @@ func TestGoogleMessagesWebRowsAreFiledAsTheirBridgeTwin(t *testing.T) {
 	if messages[0].SourceRef != bridgeText.Ref || len(messages[0].Supersedes) != 1 || messages[0].Supersedes[0].SourceRef != webText.Ref ||
 		len(messages[1].Supersedes) != 0 {
 		t.Fatalf("messages = %+v", messages)
+	}
+}
+
+// A multichat text that is a phone text is retired in favour of it, with the
+// web row it superseded; a common text in another phone conversation in the
+// same minute is not taken for it.
+func TestMultichatCopiesOfPhoneTextsAreRetiredInFavourOfThem(t *testing.T) {
+	exact := base.Add(42*time.Second + 300*time.Millisecond).UnixMilli()
+	minute := base.UnixMilli()
+	texts := []phoneText{
+		{ID: "chat_message_000001", ConversationID: "conversation_000001", SourceRef: "message:aaa", Body: "see you at six", SentAt: exact},
+		{ID: "chat_message_000002", ConversationID: "conversation_000001", SourceRef: "message:bbb", Body: "ok", SentAt: exact + 1000},
+		{ID: "chat_message_000003", ConversationID: "conversation_000002", SourceRef: "message:ccc", Body: "ok", SentAt: exact + 2000},
+	}
+	bridge := messagestore.ImportMessage{ConversationSource: "matrix", ConversationSourceRef: "!bridge:example.org", SenderHandle: "@gmessages_1.7:example.org",
+		Body: "see you at six", SentAt: exact, Source: "multichat", SourceRef: "message_100001",
+		Supersedes: []messagestore.MessageKey{{Source: "multichat", SourceRef: "message_100002"}}}
+	webOK := messagestore.ImportMessage{ConversationSource: "matrix", ConversationSourceRef: "!web:example.org", SenderHandle: "@gmessagesweb_self:example.org",
+		Body: "ok", SentAt: minute, Source: "multichat", SourceRef: "message_100003"}
+	webOther := webOK
+	webOther.SourceRef, webOther.Body = "message_100004", "only on the web"
+	webSame := webOK
+	webSame.SourceRef, webSame.ConversationSourceRef = "message_100005", "!web:example.org"
+	copies := matchPhoneCopies([]messagestore.ImportMessage{bridge, webOK, webOther}, texts)
+	kept, supersessions := copies.split([]messagestore.ImportMessage{bridge, webOK, webOther})
+	if len(kept) != 1 || kept[0].SourceRef != "message_100004" {
+		t.Fatalf("kept = %+v", kept)
+	}
+	want := map[string]string{"message_100001": "message:aaa", "message_100002": "message:aaa", "message_100003": "message:bbb"}
+	if len(supersessions) != len(want) {
+		t.Fatalf("supersessions = %+v", supersessions)
+	}
+	for _, supersession := range supersessions {
+		if want[supersession.Superseded.SourceRef] != supersession.By.SourceRef || supersession.By.Source != "sms" {
+			t.Errorf("supersession %+v", supersession)
+		}
+	}
+	// The room's phone conversation is the one most of its matches fall in:
+	// a second "ok" in that minute has no phone text left there and stays.
+	copies = matchPhoneCopies([]messagestore.ImportMessage{bridge, webOK, webSame}, texts)
+	if _, retired := copies.phoneOf["message_100005"]; retired || copies.phoneOf["message_100003"].SourceRef != "message:bbb" {
+		t.Fatalf("phoneOf = %+v", copies.phoneOf)
 	}
 }

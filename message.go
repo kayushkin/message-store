@@ -128,6 +128,19 @@ type ImportBatch struct {
 	Conversations    []ImportConversation    `json:"conversations"`
 	Messages         []ImportMessage         `json:"messages"`
 	ConversationDays []ImportConversationDay `json:"conversation_days"`
+	// Supersessions retire rows in favour of messages already stored,
+	// written after the batch's messages.
+	Supersessions []ImportSupersession `json:"supersessions,omitempty"`
+}
+
+// ImportSupersession retires the row filed under Superseded in favour of the
+// stored message filed under By, as an ImportMessage's supersedes does, for
+// an importer that does not own By's row. A Superseded row that is not
+// stored, or already retired, is nothing to do; a By that is not stored is a
+// 400.
+type ImportSupersession struct {
+	Superseded MessageKey `json:"superseded"`
+	By         MessageKey `json:"by"`
 }
 
 // ImportConversation is a conversation found by (source, source_ref).
@@ -165,7 +178,7 @@ type ImportMessage struct {
 	// Supersedes names rows that hold this same message under another id
 	// namespace. Each that exists is copied whole to the superseded record
 	// and removed, and its id then redirects here. Sending a superseded
-	// (source, source_ref) again is a 400.
+	// (source, source_ref) again is skipped and counted.
 	Supersedes []MessageKey `json:"supersedes,omitempty"`
 }
 
@@ -208,6 +221,9 @@ type ImportCounts struct {
 	DaysCreated          int `json:"days_created"`
 	DaysUpdated          int `json:"days_updated"`
 	MessagesSuperseded   int `json:"messages_superseded"`
+	// MessagesSupersededSkipped counts messages sent under a key already
+	// superseded: skipped, since another row holds the message.
+	MessagesSupersededSkipped int `json:"messages_superseded_skipped"`
 }
 
 // JournalEntryLink is one item of POST /conversation-days/journal-entries: the

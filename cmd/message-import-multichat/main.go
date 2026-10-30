@@ -312,6 +312,13 @@ func (run runner) run(out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	texts, err := readPhoneTexts(run.storeURL)
+	if err != nil {
+		return err
+	}
+	copies := matchPhoneCopies(messages, texts)
+	messages, supersessions := copies.split(messages)
+	fmt.Fprintf(out, "%d texts are copies of the %d phone texts message-store holds and are retired in favour of them\n", len(copies.phoneOf), len(texts))
 	photoCount, merged := 0, 0
 	for _, message := range messages {
 		if len(message.Supersedes) > 1 {
@@ -323,6 +330,11 @@ func (run runner) run(out io.Writer) error {
 			}
 		}
 		if err := client.AddMessage(message); err != nil {
+			return err
+		}
+	}
+	for _, supersession := range supersessions {
+		if err := client.AddSupersession(supersession); err != nil {
 			return err
 		}
 	}
