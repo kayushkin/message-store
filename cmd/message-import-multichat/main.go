@@ -546,26 +546,27 @@ func (run runner) findSelfUserIDs(rows []loggedMessage, rooms map[string]room, p
 }
 
 // photoIndex lists photo-store's live photos that came from multichat, by
-// the message-log ref they were filed under. A private document is left
-// out: it is never linked.
+// every message-log ref photo-store found each in: one picture sent in two
+// messages belongs to both. A private document is left out: it is never
+// linked.
 func (run runner) photoIndex() (map[string][]photoRef, error) {
 	index := map[string][]photoRef{}
 	for offset := 0; ; offset += 1000 {
 		var page []struct {
-			ID            string   `json:"id"`
-			SourceMachine string   `json:"source_machine"`
-			SourcePath    string   `json:"source_path"`
-			MediaType     string   `json:"media_type"`
-			Tags          []string `json:"tags"`
+			PhotoID    string   `json:"photo_id"`
+			SourcePath string   `json:"source_path"`
+			MediaType  string   `json:"media_type"`
+			Tags       []string `json:"tags"`
 		}
-		if _, err := getJSON(fmt.Sprintf("%s/photos?limit=1000&offset=%d", run.photoStoreURL, offset), nil, &page); err != nil {
+		query := url.Values{"source_machine": {photoSourceMachine}, "limit": {"1000"}, "offset": {fmt.Sprint(offset)}}
+		if _, err := getJSON(run.photoStoreURL+"/sightings?"+query.Encode(), nil, &page); err != nil {
 			return nil, err
 		}
-		for _, photo := range page {
-			if photo.SourceMachine != photoSourceMachine || isPrivate(photo.Tags) {
+		for _, sighting := range page {
+			if isPrivate(sighting.Tags) {
 				continue
 			}
-			index[photo.SourcePath] = append(index[photo.SourcePath], photoRef{ID: photo.ID, MediaType: photo.MediaType})
+			index[sighting.SourcePath] = append(index[sighting.SourcePath], photoRef{ID: sighting.PhotoID, MediaType: sighting.MediaType})
 		}
 		if len(page) < 1000 {
 			break
