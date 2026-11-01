@@ -334,3 +334,18 @@ func TestASupersessionRetiresARowInFavourOfAStoredMessage(t *testing.T) {
 	missing := ImportSupersession{Superseded: supersession.Superseded, By: MessageKey{Source: "skype", SourceRef: "never-stored"}}
 	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Supersessions: []ImportSupersession{missing}}, http.StatusBadRequest, nil)
 }
+
+func TestMessagesFindOneByItsSourceRef(t *testing.T) {
+	ts := newTestServer(t)
+	importSample(ts)
+	var page MessagePage
+	ts.call("GET", "/messages?source=discord&source_ref=m2", nil, http.StatusOK, &page)
+	if len(page.Messages) != 1 || page.Messages[0].SourceRef != "m2" || page.Messages[0].ConversationID == "" {
+		t.Fatalf("messages = %+v", page.Messages)
+	}
+	ts.call("GET", "/messages?source=skype&source_ref=m2", nil, http.StatusOK, &page)
+	if len(page.Messages) != 0 {
+		t.Fatalf("a ref matched under another source: %+v", page.Messages)
+	}
+	ts.call("GET", "/messages?source_ref=m2", nil, http.StatusBadRequest, nil)
+}

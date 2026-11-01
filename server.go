@@ -151,6 +151,7 @@ func (h *handler) listMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page, err := h.s.ListMessages(MessageFilter{ConversationIDs: query["conversation"], PersonID: query.Get("person"), Platform: query.Get("platform"),
+		Source: query.Get("source"), SourceRef: query.Get("source_ref"),
 		After: after, Before: before, Query: query.Get("q"), Newest: order == "newest", Limit: limit, Cursor: query.Get("cursor")})
 	if err != nil {
 		writeError(w, err)

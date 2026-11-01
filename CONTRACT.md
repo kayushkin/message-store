@@ -9,7 +9,7 @@ a bad request (an unknown field included), 404 for a missing id.
 | `GET /settings` | the declared settings and their values |
 | `GET /vocabulary` | platforms, message kinds, activity groupings and intervals |
 | `GET /summary` | conversations and messages per platform, with first and last times |
-| `GET /messages` | messages in time order. `conversation` (repeatable; a merged id reads the conversation it merged into), `person`, `platform`, `after`, `before`, `q` (full text), `order=oldest\|newest`, `limit` (≤5000, default 500), `cursor` (the last page's `next`) |
+| `GET /messages` | messages in time order. `conversation` (repeatable; a merged id reads the conversation it merged into), `person`, `platform`, `source` and `source_ref` (the one message an importer filed under that ref, such as a Discord message id; `source_ref` alone is a 400), `after`, `before`, `q` (full text), `order=oldest\|newest`, `limit` (≤5000, default 500), `cursor` (the last page's `next`) |
 | `GET /messages/{id}` | one message; a superseded id is a 301 whose relative `Location` is the message that holds it now |
 | `GET /superseded-messages` | retired rows, newest first, each with its whole old row as `row`. `superseded_by`, `limit` |
 | `GET /conversations` | most recently active first. `person`, `platform`, `q` (title or participant name), `limit` |

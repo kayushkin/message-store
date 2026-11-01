@@ -16,9 +16,13 @@ type MessageFilter struct {
 	// PersonID keeps messages in conversations the person takes part in.
 	PersonID string
 	Platform string
-	After    int64 // unix ms, inclusive
-	Before   int64 // unix ms, exclusive
-	Query    string
+	// Source and SourceRef keep the messages one importer filed under that
+	// source and its own ref (a Discord message id); SourceRef needs Source.
+	Source    string
+	SourceRef string
+	After     int64 // unix ms, inclusive
+	Before    int64 // unix ms, exclusive
+	Query     string
 	// Newest lists newest first; the default is oldest first.
 	Newest bool
 	Limit  int
@@ -73,6 +77,17 @@ func (s *Store) ListMessages(filter MessageFilter) (MessagePage, error) {
 	if filter.Platform != "" {
 		where = append(where, "m.conversation_id IN (SELECT id FROM conversations WHERE platform = ?)")
 		args = append(args, filter.Platform)
+	}
+	if filter.SourceRef != "" && filter.Source == "" {
+		return MessagePage{}, fmt.Errorf("%w: source_ref needs source, since refs are only unique within one", ErrInvalid)
+	}
+	if filter.Source != "" {
+		where = append(where, "m.source = ?")
+		args = append(args, filter.Source)
+	}
+	if filter.SourceRef != "" {
+		where = append(where, "m.source_ref = ?")
+		args = append(args, filter.SourceRef)
 	}
 	if filter.After > 0 {
 		where = append(where, "m.sent_at >= ?")
