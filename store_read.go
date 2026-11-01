@@ -171,6 +171,34 @@ func placeholders(count int) string {
 }
 
 // GetMessage reads one message.
+// MessageRevision is a message as it was before an import changed it.
+type MessageRevision struct {
+	ImportID  string          `json:"import_id"`
+	RevisedAt int64           `json:"revised_at"`
+	Row       json.RawMessage `json:"row"`
+}
+
+// MessageRevisions returns every earlier version of a message, oldest
+// first; none for a message no import has changed.
+func (s *Store) MessageRevisions(id string) ([]MessageRevision, error) {
+	rows, err := s.db.Query(`SELECT import_id, revised_at, row_json FROM message_revisions WHERE message_id = ? ORDER BY seq`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	revisions := []MessageRevision{}
+	for rows.Next() {
+		var revision MessageRevision
+		var row string
+		if err := rows.Scan(&revision.ImportID, &revision.RevisedAt, &row); err != nil {
+			return nil, err
+		}
+		revision.Row = json.RawMessage(row)
+		revisions = append(revisions, revision)
+	}
+	return revisions, rows.Err()
+}
+
 func (s *Store) GetMessage(id string) (Message, error) {
 	message, _, err := scanMessage(s.db.QueryRow("SELECT "+messageColumns+" "+messageJoin+" WHERE m.id = ?", id))
 	if errors.Is(err, sql.ErrNoRows) {

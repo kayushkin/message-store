@@ -117,6 +117,19 @@ CREATE TABLE IF NOT EXISTS superseded_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_superseded_messages_by ON superseded_messages(superseded_by);
 
+-- Every version of a message an import changed, as it was before the change:
+-- two sources can hold one message (a Discord message from a data package, a
+-- fetch and multichat's live log), and this store keeps what every one of
+-- them said rather than whichever spoke last.
+CREATE TABLE IF NOT EXISTS message_revisions (
+    seq             INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id      TEXT NOT NULL,             -- the chat_message_ id, as it is now
+    import_id       TEXT NOT NULL,             -- message_import_ that changed it
+    revised_at      INTEGER NOT NULL,
+    row_json        TEXT NOT NULL              -- every column of the row before the change
+);
+CREATE INDEX IF NOT EXISTS idx_message_revisions_message ON message_revisions(message_id);
+
 -- A conversation that turned out to be another one: the same chat filed under
 -- a second id namespace (a text thread the phone archive holds by number and
 -- a Matrix room holds by room id) or carried by two rooms. The importer that

@@ -23,6 +23,7 @@ func RegisterHandlers(mux *http.ServeMux, s *Store) {
 
 	mux.HandleFunc("GET /messages", h.listMessages)
 	mux.HandleFunc("GET /messages/{id}", h.getMessage)
+	mux.HandleFunc("GET /messages/{id}/revisions", h.messageRevisions)
 	mux.HandleFunc("GET /superseded-messages", h.listSupersededMessages)
 
 	mux.HandleFunc("GET /conversations", h.listConversations)
@@ -158,6 +159,16 @@ func (h *handler) listMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, page)
+}
+
+// messageRevisions answers every earlier version of a message, oldest first.
+func (h *handler) messageRevisions(w http.ResponseWriter, r *http.Request) {
+	revisions, err := h.s.MessageRevisions(r.PathValue("id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, revisions)
 }
 
 func (h *handler) getMessage(w http.ResponseWriter, r *http.Request) {

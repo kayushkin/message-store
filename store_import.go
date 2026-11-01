@@ -295,6 +295,79 @@ func (w *batchWriter) upsertConversation(conversation ImportConversation) error 
 	return nil
 }
 
+// messageRowJSON selects every column of a messages row as one JSON object,
+// the form superseded and revised rows are kept in.
+const messageRowJSON = `json_object(
+			'seq', seq, 'id', id, 'conversation_id', conversation_id, 'sent_at', sent_at, 'sender_handle', sender_handle,
+			'kind', kind, 'body', body, 'attachments', json(attachments), 'reply_to_source_ref', reply_to_source_ref,
+			'call_seconds', call_seconds, 'edited', edited, 'deleted_on_platform', deleted_on_platform, 'source', source,
+			'source_ref', source_ref, 'source_hash', source_hash, 'imported_by', imported_by, 'created_at', created_at,
+			'updated_at', updated_at)`
+
+// storedMessage is what an import may merge into: the fields of a stored
+// message one source can know and another not.
+type storedMessage struct {
+	SenderHandle      string
+	Body              string
+	Attachments       []Attachment
+	ReplyToSourceRef  string
+	CallSeconds       int
+	Edited            bool
+	DeletedOnPlatform bool
+}
+
+// mergeMessage is a stored message after an import writes it again. The
+// store is the record, so a source that knows less never takes away what
+// another said: text an import sends empty keeps the stored text (a live log
+// that dropped a custom emoji, a bridge that moved a GIF link out of the
+// body), every stored attachment stays, and a stored photo link stays on its
+// file; a delete or an edit once seen stays seen. Text an import sends
+// replaces the stored text, which is how an edit arrives; the old text is in
+// message_revisions.
+func mergeMessage(kept storedMessage, incoming ImportMessage) storedMessage {
+	merged := storedMessage{
+		SenderHandle:      firstNonEmpty(incoming.SenderHandle, kept.SenderHandle),
+		Body:              firstNonEmpty(incoming.Body, kept.Body),
+		ReplyToSourceRef:  firstNonEmpty(incoming.ReplyToSourceRef, kept.ReplyToSourceRef),
+		CallSeconds:       incoming.CallSeconds,
+		Edited:            incoming.Edited || kept.Edited,
+		DeletedOnPlatform: incoming.DeletedOnPlatform || kept.DeletedOnPlatform,
+	}
+	if merged.CallSeconds == 0 {
+		merged.CallSeconds = kept.CallSeconds
+	}
+	photoOf := map[string]string{}
+	for _, attachment := range kept.Attachments {
+		if attachment.PhotoID != "" && attachment.Name != "" {
+			photoOf[attachment.Name] = attachment.PhotoID
+		}
+	}
+	named := map[string]bool{}
+	for _, attachment := range incoming.Attachments {
+		if attachment.PhotoID == "" {
+			attachment.PhotoID = photoOf[attachment.Name]
+		}
+		named[attachment.Name] = true
+		merged.Attachments = append(merged.Attachments, attachment)
+	}
+	for _, attachment := range kept.Attachments {
+		if !named[attachment.Name] {
+			merged.Attachments = append(merged.Attachments, attachment)
+		}
+	}
+	if merged.Attachments == nil {
+		merged.Attachments = []Attachment{}
+	}
+	return merged
+}
+
+func firstNonEmpty(first, second string) string {
+	if first != "" {
+		return first
+	}
+	return second
+}
+
 func (w *batchWriter) upsertMessage(message ImportMessage) error {
 	if message.Source == "" || message.SourceRef == "" {
 		return fmt.Errorf("%w: source and source_ref are required", ErrInvalid)
@@ -353,10 +426,28 @@ func (w *batchWriter) upsertMessage(message ImportMessage) error {
 	case message.SourceHash != "" && message.SourceHash == hash:
 		w.counts.MessagesUnchanged++
 	default:
+		var kept storedMessage
+		var keptAttachments, rowJSON string
+		var edited, deleted int
+		if err := w.tx.QueryRow(`SELECT sender_handle, body, attachments, reply_to_source_ref, call_seconds, edited, deleted_on_platform, `+messageRowJSON+`
+				FROM messages WHERE id = ?`, id).Scan(&kept.SenderHandle, &kept.Body, &keptAttachments, &kept.ReplyToSourceRef, &kept.CallSeconds,
+			&edited, &deleted, &rowJSON); err != nil {
+			return err
+		}
+		if err := json.Unmarshal([]byte(keptAttachments), &kept.Attachments); err != nil {
+			return fmt.Errorf("message %s: stored attachments: %w", id, err)
+		}
+		kept.Edited, kept.DeletedOnPlatform = edited == 1, deleted == 1
+		merged := mergeMessage(kept, message)
+		mergedAttachments, _ := json.Marshal(merged.Attachments)
+		if _, err := w.tx.Exec(`INSERT INTO message_revisions (message_id, import_id, revised_at, row_json) VALUES (?,?,?,?)`,
+			id, w.importID, w.now, rowJSON); err != nil {
+			return err
+		}
 		_, err = w.tx.Exec(`UPDATE messages SET conversation_id = ?, sent_at = ?, sender_handle = ?, kind = ?, body = ?, attachments = ?, reply_to_source_ref = ?,
 				call_seconds = ?, edited = ?, deleted_on_platform = ?, source_hash = ?, imported_by = ?, updated_at = ? WHERE id = ?`,
-			conversationID, message.SentAt, message.SenderHandle, message.Kind, message.Body, string(attachmentsJSON), message.ReplyToSourceRef,
-			message.CallSeconds, boolInt(message.Edited), boolInt(message.DeletedOnPlatform), message.SourceHash, w.importID, w.now, id)
+			conversationID, message.SentAt, merged.SenderHandle, message.Kind, merged.Body, string(mergedAttachments), merged.ReplyToSourceRef,
+			merged.CallSeconds, boolInt(merged.Edited), boolInt(merged.DeletedOnPlatform), message.SourceHash, w.importID, w.now, id)
 		if err != nil {
 			return err
 		}
@@ -378,12 +469,7 @@ func (w *batchWriter) supersede(old MessageKey, supersededBy string) error {
 		return fmt.Errorf("%w: a superseded message needs source and source_ref", ErrInvalid)
 	}
 	var oldID, rowJSON string
-	err := w.tx.QueryRow(`SELECT id, json_object(
-			'seq', seq, 'id', id, 'conversation_id', conversation_id, 'sent_at', sent_at, 'sender_handle', sender_handle,
-			'kind', kind, 'body', body, 'attachments', json(attachments), 'reply_to_source_ref', reply_to_source_ref,
-			'call_seconds', call_seconds, 'edited', edited, 'deleted_on_platform', deleted_on_platform, 'source', source,
-			'source_ref', source_ref, 'source_hash', source_hash, 'imported_by', imported_by, 'created_at', created_at,
-			'updated_at', updated_at)
+	err := w.tx.QueryRow(`SELECT id, `+messageRowJSON+`
 		FROM messages WHERE source = ? AND source_ref = ?`, old.Source, old.SourceRef).Scan(&oldID, &rowJSON)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil

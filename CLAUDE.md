@@ -45,3 +45,7 @@ Module `github.com/kayushkin/message-store`, root package `messagestore`, server
 ## Public repository: nothing personal
 
 This repo may be made public. Nothing about the user's messages goes in it: no message text, names of people or chats, handles, phone numbers, account ids, archive paths or home directories, in code, tests, comments or commit messages. Tests use made-up data (`Carol`, `Me Self`, `Europe/Lisbon`). A fact an agent needs about this host's archives goes in a noteboard note tagged `message-store`.
+
+## Two sources, one message: merged, never replaced
+
+One message can arrive from several importers under one key (a Discord message from a data package, a fetch and multichat's live log, all filed by its Discord id). Since 2026-11-01 an import that changes a stored message merges into it (`mergeMessage` in `store_import.go`): text it sends empty keeps the stored text, every stored attachment and photo link stays, and a delete or an edit once seen stays seen; text it sends replaces the stored text, which is how an edit arrives. The row as it was goes to `message_revisions` first, and `GET /messages/{id}/revisions` answers every earlier version. The store is the record: no source that knows less may take away what another said.

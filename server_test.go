@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -348,4 +349,45 @@ func TestMessagesFindOneByItsSourceRef(t *testing.T) {
 		t.Fatalf("a ref matched under another source: %+v", page.Messages)
 	}
 	ts.call("GET", "/messages?source_ref=m2", nil, http.StatusBadRequest, nil)
+}
+
+func TestASourceThatKnowsLessNeverTakesAwayWhatAnotherSaid(t *testing.T) {
+	ts := newTestServer(t)
+	run := importSample(ts)
+	discordMessage := func(body, hash string, attachments []Attachment, deleted bool) ImportBatch {
+		return ImportBatch{Messages: []ImportMessage{{ConversationSource: "discord", ConversationSourceRef: "1000", SentAt: at("2016-03-01T12:05:00Z"),
+			SenderHandle: "2", Kind: "text", Body: body, Attachments: attachments, DeletedOnPlatform: deleted, Source: "discord", SourceRef: "m3", SourceHash: hash}}}
+	}
+	var counts ImportCounts
+	// The fetch: Discord's own text, a picture photo-store holds.
+	ts.call("POST", "/imports/"+run.ID+"/batches", discordMessage("<:blobcry:1>", "fetch",
+		[]Attachment{{Name: "a.jpg", MimeType: "image/jpeg", PhotoID: "photo_000002"}}, false), http.StatusOK, &counts)
+	// The live log: no custom emoji in the text, the picture unlinked, a GIF
+	// as an attachment, and the delete it saw.
+	ts.call("POST", "/imports/"+run.ID+"/batches", discordMessage("", "live",
+		[]Attachment{{Name: "a.jpg", MimeType: "image/jpeg"}, {Name: "https://klipy.com/gifs/x", MimeType: "video/mp4"}}, true), http.StatusOK, &counts)
+	var page MessagePage
+	ts.call("GET", "/messages?source=discord&source_ref=m3", nil, http.StatusOK, &page)
+	got := page.Messages[0]
+	if got.Body != "<:blobcry:1>" || !got.DeletedOnPlatform || len(got.Attachments) != 2 || got.Attachments[0].PhotoID != "photo_000002" {
+		t.Fatalf("message = %+v", got)
+	}
+	// The fetch again, which cannot see the delete: still deleted.
+	ts.call("POST", "/imports/"+run.ID+"/batches", discordMessage("<:blobcry:1>", "fetch",
+		[]Attachment{{Name: "a.jpg", MimeType: "image/jpeg", PhotoID: "photo_000002"}}, false), http.StatusOK, &counts)
+	ts.call("GET", "/messages?source=discord&source_ref=m3", nil, http.StatusOK, &page)
+	if got := page.Messages[0]; !got.DeletedOnPlatform || len(got.Attachments) != 2 {
+		t.Fatalf("after the fetch again: %+v", got)
+	}
+	// An edit still replaces the text.
+	ts.call("POST", "/imports/"+run.ID+"/batches", discordMessage("edited text", "edit", nil, true), http.StatusOK, &counts)
+	ts.call("GET", "/messages?source=discord&source_ref=m3", nil, http.StatusOK, &page)
+	if page.Messages[0].Body != "edited text" {
+		t.Fatalf("edit not taken: %+v", page.Messages[0])
+	}
+	var revisions []MessageRevision
+	ts.call("GET", "/messages/"+page.Messages[0].ID+"/revisions", nil, http.StatusOK, &revisions)
+	if len(revisions) != 3 || !strings.Contains(string(revisions[0].Row), `blobcry`) {
+		t.Fatalf("revisions = %d, first %s", len(revisions), revisions[0].Row)
+	}
 }
