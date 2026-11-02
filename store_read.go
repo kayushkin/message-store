@@ -459,34 +459,67 @@ func (s *Store) involvedGroupDays(location *time.Location) (map[string]map[strin
 		days[id] = map[string]bool{}
 	}
 	groups.Close()
-	rows, err := s.db.Query(`
-		SELECT m.conversation_id, m.sent_at FROM messages m
-			JOIN conversations c ON c.id = m.conversation_id AND c.is_group = 1
-			JOIN participants p ON p.conversation_id = m.conversation_id AND p.handle = m.sender_handle AND p.is_self = 1
-		UNION ALL
-		SELECT m.conversation_id, m.sent_at FROM messages m
-			JOIN conversations c ON c.id = m.conversation_id AND c.is_group = 1
-			JOIN messages own ON own.conversation_id = m.conversation_id AND own.source_ref = m.reply_to_source_ref
-			JOIN participants op ON op.conversation_id = own.conversation_id AND op.handle = own.sender_handle AND op.is_self = 1
-			WHERE m.reply_to_source_ref != ''
-		UNION ALL
-		SELECT m.conversation_id, m.sent_at FROM messages m
-			JOIN conversations c ON c.id = m.conversation_id AND c.is_group = 1
-			JOIN participants sp ON sp.conversation_id = m.conversation_id AND sp.is_self = 1 AND sp.handle != ''
-			WHERE instr(m.body, '<@' || sp.handle || '>') > 0 OR instr(m.body, '<@!' || sp.handle || '>') > 0`)
+	mark := func(conversationID string, sentAt int64) {
+		days[conversationID][time.UnixMilli(sentAt).In(location).Format(time.DateOnly)] = true
+	}
+	// The user's own messages in groups: their days, and their refs, which a
+	// reply names. Replies are matched here rather than by a self-join, which
+	// SQLite plans as a scan per reply.
+	own := map[string]map[string]bool{}
+	ownRows, err := s.db.Query(`SELECT m.conversation_id, m.sent_at, m.source_ref FROM messages m
+		JOIN conversations c ON c.id = m.conversation_id AND c.is_group = 1
+		JOIN participants p ON p.conversation_id = m.conversation_id AND p.handle = m.sender_handle AND p.is_self = 1`)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var conversationID string
+	for ownRows.Next() {
+		var conversationID, ref string
 		var sentAt int64
-		if err := rows.Scan(&conversationID, &sentAt); err != nil {
+		if err := ownRows.Scan(&conversationID, &sentAt, &ref); err != nil {
+			ownRows.Close()
 			return nil, err
 		}
-		days[conversationID][time.UnixMilli(sentAt).In(location).Format(time.DateOnly)] = true
+		mark(conversationID, sentAt)
+		if own[conversationID] == nil {
+			own[conversationID] = map[string]bool{}
+		}
+		own[conversationID][ref] = true
 	}
-	return days, rows.Err()
+	ownRows.Close()
+	replyRows, err := s.db.Query(`SELECT m.conversation_id, m.sent_at, m.reply_to_source_ref FROM messages m
+		JOIN conversations c ON c.id = m.conversation_id AND c.is_group = 1 WHERE m.reply_to_source_ref != ''`)
+	if err != nil {
+		return nil, err
+	}
+	for replyRows.Next() {
+		var conversationID, repliesTo string
+		var sentAt int64
+		if err := replyRows.Scan(&conversationID, &sentAt, &repliesTo); err != nil {
+			replyRows.Close()
+			return nil, err
+		}
+		if own[conversationID][repliesTo] {
+			mark(conversationID, sentAt)
+		}
+	}
+	replyRows.Close()
+	mentionRows, err := s.db.Query(`SELECT m.conversation_id, m.sent_at FROM messages m
+		JOIN conversations c ON c.id = m.conversation_id AND c.is_group = 1
+		JOIN participants sp ON sp.conversation_id = m.conversation_id AND sp.is_self = 1 AND sp.handle != ''
+		WHERE instr(m.body, '<@' || sp.handle || '>') > 0 OR instr(m.body, '<@!' || sp.handle || '>') > 0`)
+	if err != nil {
+		return nil, err
+	}
+	defer mentionRows.Close()
+	for mentionRows.Next() {
+		var conversationID string
+		var sentAt int64
+		if err := mentionRows.Scan(&conversationID, &sentAt); err != nil {
+			return nil, err
+		}
+		mark(conversationID, sentAt)
+	}
+	return days, mentionRows.Err()
 }
 
 // ActivityFilter is GET /activity.

@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_time ON messages(sent_at, seq);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_time ON messages(conversation_id, sent_at, seq);
 CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(conversation_id, sender_handle);
+-- A reply names the message it answers by source_ref; the day-involvement check looks it up.
+CREATE INDEX IF NOT EXISTS idx_messages_conversation_source_ref ON messages(conversation_id, source_ref);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(body, content='messages', content_rowid='seq');
 CREATE TRIGGER IF NOT EXISTS messages_fts_insert AFTER INSERT ON messages BEGIN
