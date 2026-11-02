@@ -13,7 +13,10 @@ a bad request (an unknown field included), 404 for a missing id.
 | `GET /messages/{id}/revisions` | every earlier version of a message, oldest first: `import_id`, `revised_at` and the whole `row` as it was before that import changed it |
 | `GET /messages/{id}` | one message; a superseded id is a 301 whose relative `Location` is the message that holds it now |
 | `GET /superseded-messages` | retired rows, newest first, each with its whole old row as `row`. `superseded_by`, `limit` |
-| `GET /conversations` | most recently active first. `person`, `platform`, `q` (title or participant name), `limit` |
+| `GET /accounts` | accounts of ours, the user's own first: `id` (`message_account_000001`), `platform`, `handle` (the user id there), `display_name`, `kind` (`GET /vocabulary` `account_kinds`: `user`, `bot`) |
+| `GET /accounts/{id}` | one account |
+| `POST /accounts` | `{"platform","handle","display_name","kind"}`: the account with that platform and handle, made if new; an empty display name keeps the stored one |
+| `GET /conversations` | most recently active first. `account` (the conversations with a participant of the account's handle on its platform), `person`, `platform`, `q` (title or participant name), `limit` |
 | `GET /conversations/{id}` | one conversation, participants and message summary; a merged id is a 301 whose relative `Location` is the conversation it merged into |
 | `GET /conversation-merges` | merged conversations, newest first, each with its whole old row and participants as `row`. `merged_into`, `limit` |
 | `PATCH /conversations/{id}/participants/{handle}` | `{"person_id":"person_000001"}` names the handle's person; `""` clears it |
@@ -32,6 +35,11 @@ a bad request (an unknown field included), 404 for a missing id.
   keeps the stored one. Participants are added or updated by handle; a
   participant's `person_id` is written only when the batch gives one, so a
   person set by hand survives an import that knows nobody.
+- A message's `embeds` and `buttons` (a bot's cards and the buttons under a
+  message) are replaced by an import that sends any and kept by one that sends
+  none.
+- A participant's `is_self` is set by an import that sends it and never
+  cleared by one that does not.
 - A message is found by `(source, source_ref)`. The same `source_hash` skips it;
   another hash rewrites it. A sender handle the conversation never listed gets a
   participant row.
