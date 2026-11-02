@@ -35,6 +35,11 @@ const (
 	// token it sends.
 	SettingMultichatURL   = "multichat_url"
 	SettingMultichatToken = "multichat_token"
+	// SettingAuthStoreURL and SettingAuthStoreToken are where
+	// message-import-discord-bot reads a bot's Discord token, and the bearer
+	// token it sends there.
+	SettingAuthStoreURL   = "auth_store_url"
+	SettingAuthStoreToken = "auth_store_token"
 )
 
 // DefaultListenAddress is loopback, deliberately: these are private messages,
@@ -83,7 +88,21 @@ func StoreURLDefinition() servicesettings.Definition {
 // settings test sees them.
 func ImporterSettingDefinitions() []servicesettings.Definition {
 	return []servicesettings.Definition{StoreURLDefinition(), PhotoStoreURLDefinition(), JournalStoreURLDefinition(),
-		PeopleStoreURLDefinition(), MultichatURLDefinition(), MultichatTokenDefinition()}
+		PeopleStoreURLDefinition(), MultichatURLDefinition(), MultichatTokenDefinition(), AuthStoreURLDefinition(), AuthStoreTokenDefinition()}
+}
+
+// AuthStoreURLDefinition is where auth-store answers: message-import-discord-bot
+// reads a bot's Discord token there at the start of each run.
+func AuthStoreURLDefinition() servicesettings.Definition {
+	return servicesettings.Definition{Key: SettingAuthStoreURL, EnvironmentVariable: "AUTH_STORE_URL", Kind: msg.ServiceSettingKindWiring, ValueType: msg.ServiceSettingValueTypeString, Default: "http://127.0.0.1:8303",
+		Description: "Where auth-store answers: message-import-discord-bot reads the bot's Discord token there (provider discord)."}
+}
+
+// AuthStoreTokenDefinition is the bearer token auth-store asks for. Only
+// message-import-discord-bot needs it, and it refuses to start without one.
+func AuthStoreTokenDefinition() servicesettings.Definition {
+	return servicesettings.Definition{Key: SettingAuthStoreToken, EnvironmentVariable: "AUTH_STORE_TOKEN", Kind: msg.ServiceSettingKindSecret, ValueType: msg.ServiceSettingValueTypeString,
+		Description: "The bearer token auth-store asks for. message-import-discord-bot sends it and never prints it."}
 }
 
 // PhotoStoreURLDefinition is where photo-store answers: the chat importers
