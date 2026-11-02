@@ -12,6 +12,12 @@ var MessageKinds = []string{
 	"system",  // a line the platform wrote: someone joined, the title changed
 }
 
+// AccountKinds are whose an account of ours is.
+var AccountKinds = []string{
+	"user", // the user's own account
+	"bot",  // a bot the user runs: what it sends is what people get from it
+}
+
 // ActivityGroupings are the keys GET /activity can count by.
 var ActivityGroupings = []string{"person", "conversation", "platform"}
 
@@ -41,10 +47,11 @@ type Vocabulary struct {
 	ActivityGroupings      []string `json:"activity_groupings"`
 	ActivityIntervals      []string `json:"activity_intervals"`
 	DayInvolvements        []string `json:"day_involvements"`
+	AccountKinds           []string `json:"account_kinds"`
 }
 
 func vocabulary() Vocabulary {
-	return Vocabulary{Platforms: Platforms, ConversationMergeRules: ConversationMergeRules, MessageKinds: MessageKinds, ActivityGroupings: ActivityGroupings, ActivityIntervals: ActivityIntervals, DayInvolvements: DayInvolvements}
+	return Vocabulary{Platforms: Platforms, ConversationMergeRules: ConversationMergeRules, MessageKinds: MessageKinds, ActivityGroupings: ActivityGroupings, ActivityIntervals: ActivityIntervals, DayInvolvements: DayInvolvements, AccountKinds: AccountKinds}
 }
 
 func contains(list []string, value string) bool {

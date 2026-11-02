@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS messages (
     call_seconds    INTEGER NOT NULL DEFAULT 0,-- kind call: how long it lasted
     edited          INTEGER NOT NULL DEFAULT 0,
     deleted_on_platform INTEGER NOT NULL DEFAULT 0, -- someone deleted it there; the text is kept
+    embeds          TEXT NOT NULL DEFAULT '[]',-- JSON []Embed: cards a bot posts beside or instead of text
+    buttons         TEXT NOT NULL DEFAULT '[]',-- JSON []Button: the buttons under a message
     source          TEXT NOT NULL,             -- id namespace, as for conversations
     source_ref      TEXT NOT NULL,             -- the message's id there
     source_hash     TEXT NOT NULL DEFAULT '',  -- the importer's hash; same hash = skip
@@ -153,3 +155,20 @@ CREATE TABLE IF NOT EXISTS conversation_merges (
     UNIQUE (source, source_ref)
 );
 CREATE INDEX IF NOT EXISTS idx_conversation_merges_into ON conversation_merges(merged_into);
+
+-- An account of ours on a platform: the user's own, or a bot the user runs.
+-- A conversation belongs to an account when the account's handle is one of
+-- its participants on the same platform, so the account's view is every
+-- chat it took part in or could read.
+CREATE TABLE IF NOT EXISTS accounts (
+    seq          INTEGER PRIMARY KEY,
+    id           TEXT NOT NULL UNIQUE,         -- message_account_000001
+    platform     TEXT NOT NULL,                -- vocabulary.go Platforms
+    handle       TEXT NOT NULL,                -- the account's user id there, as participants.handle holds it
+    display_name TEXT NOT NULL DEFAULT '',     -- for display only; never joined on
+    kind         TEXT NOT NULL,                -- vocabulary.go AccountKinds
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL,
+    UNIQUE (platform, handle)
+);
+CREATE INDEX IF NOT EXISTS idx_participants_handle ON participants(handle);

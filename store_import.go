@@ -287,7 +287,7 @@ func (w *batchWriter) upsertConversation(conversation ImportConversation) error 
 			ON CONFLICT (conversation_id, handle) DO UPDATE SET
 				display_name = CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE display_name END,
 				person_id    = CASE WHEN excluded.person_id    != '' THEN excluded.person_id    ELSE person_id END,
-				is_self      = excluded.is_self`,
+				is_self      = CASE WHEN excluded.is_self = 1 THEN 1 ELSE is_self END`,
 			id, participant.Handle, participant.DisplayName, participant.PersonID, boolInt(participant.IsSelf)); err != nil {
 			return err
 		}
@@ -299,7 +299,7 @@ func (w *batchWriter) upsertConversation(conversation ImportConversation) error 
 // the form superseded and revised rows are kept in.
 const messageRowJSON = `json_object(
 			'seq', seq, 'id', id, 'conversation_id', conversation_id, 'sent_at', sent_at, 'sender_handle', sender_handle,
-			'kind', kind, 'body', body, 'attachments', json(attachments), 'reply_to_source_ref', reply_to_source_ref,
+			'kind', kind, 'body', body, 'attachments', json(attachments), 'embeds', json(embeds), 'buttons', json(buttons), 'reply_to_source_ref', reply_to_source_ref,
 			'call_seconds', call_seconds, 'edited', edited, 'deleted_on_platform', deleted_on_platform, 'source', source,
 			'source_ref', source_ref, 'source_hash', source_hash, 'imported_by', imported_by, 'created_at', created_at,
 			'updated_at', updated_at)`
@@ -310,6 +310,8 @@ type storedMessage struct {
 	SenderHandle      string
 	Body              string
 	Attachments       []Attachment
+	Embeds            []Embed
+	Buttons           []Button
 	ReplyToSourceRef  string
 	CallSeconds       int
 	Edited            bool
@@ -323,7 +325,8 @@ type storedMessage struct {
 // body), every stored attachment stays, and a stored photo link stays on its
 // file; a delete or an edit once seen stays seen. Text an import sends
 // replaces the stored text, which is how an edit arrives; the old text is in
-// message_revisions.
+// message_revisions. Embeds and buttons are a bot's card as one whole: an
+// import that sends any replaces them, one that sends none keeps them.
 func mergeMessage(kept storedMessage, incoming ImportMessage) storedMessage {
 	merged := storedMessage{
 		SenderHandle:      firstNonEmpty(incoming.SenderHandle, kept.SenderHandle),
@@ -332,6 +335,20 @@ func mergeMessage(kept storedMessage, incoming ImportMessage) storedMessage {
 		CallSeconds:       incoming.CallSeconds,
 		Edited:            incoming.Edited || kept.Edited,
 		DeletedOnPlatform: incoming.DeletedOnPlatform || kept.DeletedOnPlatform,
+		Embeds:            kept.Embeds,
+		Buttons:           kept.Buttons,
+	}
+	if len(incoming.Embeds) > 0 {
+		merged.Embeds = incoming.Embeds
+	}
+	if len(incoming.Buttons) > 0 {
+		merged.Buttons = incoming.Buttons
+	}
+	if merged.Embeds == nil {
+		merged.Embeds = []Embed{}
+	}
+	if merged.Buttons == nil {
+		merged.Buttons = []Button{}
 	}
 	if merged.CallSeconds == 0 {
 		merged.CallSeconds = kept.CallSeconds
@@ -403,6 +420,15 @@ func (w *batchWriter) upsertMessage(message ImportMessage) error {
 		attachments = []Attachment{}
 	}
 	attachmentsJSON, _ := json.Marshal(attachments)
+	embeds, buttons := message.Embeds, message.Buttons
+	if embeds == nil {
+		embeds = []Embed{}
+	}
+	if buttons == nil {
+		buttons = []Button{}
+	}
+	embedsJSON, _ := json.Marshal(embeds)
+	buttonsJSON, _ := json.Marshal(buttons)
 	var id, hash string
 	err = w.tx.QueryRow(`SELECT id, source_hash FROM messages WHERE source = ? AND source_ref = ?`, message.Source, message.SourceRef).Scan(&id, &hash)
 	switch {
@@ -411,9 +437,9 @@ func (w *batchWriter) upsertMessage(message ImportMessage) error {
 		if err != nil {
 			return err
 		}
-		_, err = w.tx.Exec(`INSERT INTO messages (seq, id, conversation_id, sent_at, sender_handle, kind, body, attachments, reply_to_source_ref, call_seconds,
-				edited, deleted_on_platform, source, source_ref, source_hash, imported_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			seq, newID, conversationID, message.SentAt, message.SenderHandle, message.Kind, message.Body, string(attachmentsJSON), message.ReplyToSourceRef,
+		_, err = w.tx.Exec(`INSERT INTO messages (seq, id, conversation_id, sent_at, sender_handle, kind, body, attachments, embeds, buttons, reply_to_source_ref, call_seconds,
+				edited, deleted_on_platform, source, source_ref, source_hash, imported_by, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			seq, newID, conversationID, message.SentAt, message.SenderHandle, message.Kind, message.Body, string(attachmentsJSON), string(embedsJSON), string(buttonsJSON), message.ReplyToSourceRef,
 			message.CallSeconds, boolInt(message.Edited), boolInt(message.DeletedOnPlatform), message.Source, message.SourceRef, message.SourceHash,
 			w.importID, w.now, w.now)
 		if err != nil {
@@ -427,26 +453,34 @@ func (w *batchWriter) upsertMessage(message ImportMessage) error {
 		w.counts.MessagesUnchanged++
 	default:
 		var kept storedMessage
-		var keptAttachments, rowJSON string
+		var keptAttachments, keptEmbeds, keptButtons, rowJSON string
 		var edited, deleted int
-		if err := w.tx.QueryRow(`SELECT sender_handle, body, attachments, reply_to_source_ref, call_seconds, edited, deleted_on_platform, `+messageRowJSON+`
-				FROM messages WHERE id = ?`, id).Scan(&kept.SenderHandle, &kept.Body, &keptAttachments, &kept.ReplyToSourceRef, &kept.CallSeconds,
+		if err := w.tx.QueryRow(`SELECT sender_handle, body, attachments, embeds, buttons, reply_to_source_ref, call_seconds, edited, deleted_on_platform, `+messageRowJSON+`
+				FROM messages WHERE id = ?`, id).Scan(&kept.SenderHandle, &kept.Body, &keptAttachments, &keptEmbeds, &keptButtons, &kept.ReplyToSourceRef, &kept.CallSeconds,
 			&edited, &deleted, &rowJSON); err != nil {
 			return err
 		}
 		if err := json.Unmarshal([]byte(keptAttachments), &kept.Attachments); err != nil {
 			return fmt.Errorf("message %s: stored attachments: %w", id, err)
 		}
+		if err := json.Unmarshal([]byte(keptEmbeds), &kept.Embeds); err != nil {
+			return fmt.Errorf("message %s: stored embeds: %w", id, err)
+		}
+		if err := json.Unmarshal([]byte(keptButtons), &kept.Buttons); err != nil {
+			return fmt.Errorf("message %s: stored buttons: %w", id, err)
+		}
 		kept.Edited, kept.DeletedOnPlatform = edited == 1, deleted == 1
 		merged := mergeMessage(kept, message)
 		mergedAttachments, _ := json.Marshal(merged.Attachments)
+		mergedEmbeds, _ := json.Marshal(merged.Embeds)
+		mergedButtons, _ := json.Marshal(merged.Buttons)
 		if _, err := w.tx.Exec(`INSERT INTO message_revisions (message_id, import_id, revised_at, row_json) VALUES (?,?,?,?)`,
 			id, w.importID, w.now, rowJSON); err != nil {
 			return err
 		}
-		_, err = w.tx.Exec(`UPDATE messages SET conversation_id = ?, sent_at = ?, sender_handle = ?, kind = ?, body = ?, attachments = ?, reply_to_source_ref = ?,
+		_, err = w.tx.Exec(`UPDATE messages SET conversation_id = ?, sent_at = ?, sender_handle = ?, kind = ?, body = ?, attachments = ?, embeds = ?, buttons = ?, reply_to_source_ref = ?,
 				call_seconds = ?, edited = ?, deleted_on_platform = ?, source_hash = ?, imported_by = ?, updated_at = ? WHERE id = ?`,
-			conversationID, message.SentAt, merged.SenderHandle, message.Kind, merged.Body, string(mergedAttachments), merged.ReplyToSourceRef,
+			conversationID, message.SentAt, merged.SenderHandle, message.Kind, merged.Body, string(mergedAttachments), string(mergedEmbeds), string(mergedButtons), merged.ReplyToSourceRef,
 			merged.CallSeconds, boolInt(merged.Edited), boolInt(merged.DeletedOnPlatform), message.SourceHash, w.importID, w.now, id)
 		if err != nil {
 			return err

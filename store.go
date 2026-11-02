@@ -35,6 +35,7 @@ const (
 	prefixMessage         = "chat_message_"
 	prefixConversationDay = "conversation_day_"
 	prefixImport          = "message_import_"
+	prefixAccount         = "message_account_"
 )
 
 // Store owns the database.
@@ -67,6 +68,10 @@ func Open(dataDir string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("set WAL: %w", err)
 	}
+	if err := addMissingColumns(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
 	if _, err := db.Exec(schemaSQL); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
@@ -76,6 +81,36 @@ func Open(dataDir string) (*Store, error) {
 		return nil, err
 	}
 	return &Store{db: db, dataDir: dataDir}, nil
+}
+
+// addedColumns are columns added to a table after it was first made. The
+// schema's CREATE TABLE holds them for a new database; an older one gets
+// them here, before the schema runs.
+var addedColumns = []struct{ table, column, definition string }{
+	{"messages", "embeds", "TEXT NOT NULL DEFAULT '[]'"},
+	{"messages", "buttons", "TEXT NOT NULL DEFAULT '[]'"},
+}
+
+func addMissingColumns(db *sql.DB) error {
+	for _, added := range addedColumns {
+		var tableCount int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, added.table).Scan(&tableCount); err != nil {
+			return err
+		}
+		if tableCount == 0 {
+			continue
+		}
+		var columnCount int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, added.table, added.column).Scan(&columnCount); err != nil {
+			return err
+		}
+		if columnCount == 0 {
+			if _, err := db.Exec("ALTER TABLE " + added.table + " ADD COLUMN " + added.column + " " + added.definition); err != nil {
+				return fmt.Errorf("add %s.%s: %w", added.table, added.column, err)
+			}
+		}
+	}
+	return nil
 }
 
 // Close closes the database.

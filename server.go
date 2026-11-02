@@ -26,6 +26,10 @@ func RegisterHandlers(mux *http.ServeMux, s *Store) {
 	mux.HandleFunc("GET /messages/{id}/revisions", h.messageRevisions)
 	mux.HandleFunc("GET /superseded-messages", h.listSupersededMessages)
 
+	mux.HandleFunc("GET /accounts", h.listAccounts)
+	mux.HandleFunc("POST /accounts", h.putAccount)
+	mux.HandleFunc("GET /accounts/{id}", h.getAccount)
+
 	mux.HandleFunc("GET /conversations", h.listConversations)
 	mux.HandleFunc("GET /conversations/{id}", h.getConversation)
 	mux.HandleFunc("GET /conversation-merges", h.listConversationMerges)
@@ -222,7 +226,7 @@ func (h *handler) listConversations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := r.URL.Query()
-	conversations, err := h.s.ListConversations(ConversationFilter{PersonID: query.Get("person"), Platform: query.Get("platform"), Query: query.Get("q"), Limit: limit})
+	conversations, err := h.s.ListConversations(ConversationFilter{PersonID: query.Get("person"), AccountID: query.Get("account"), Platform: query.Get("platform"), Query: query.Get("q"), Limit: limit})
 	if err != nil {
 		writeError(w, err)
 		return
@@ -386,4 +390,36 @@ func (h *handler) finishImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, run)
+}
+
+func (h *handler) listAccounts(w http.ResponseWriter, r *http.Request) {
+	accounts, err := h.s.ListAccounts()
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, accounts)
+}
+
+func (h *handler) putAccount(w http.ResponseWriter, r *http.Request) {
+	var put AccountPut
+	if err := decode(r, &put); err != nil {
+		writeError(w, err)
+		return
+	}
+	account, err := h.s.PutAccount(put)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, account)
+}
+
+func (h *handler) getAccount(w http.ResponseWriter, r *http.Request) {
+	account, err := h.s.GetAccount(r.PathValue("id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, account)
 }

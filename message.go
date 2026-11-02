@@ -40,6 +40,58 @@ type Attachment struct {
 	Name     string `json:"name,omitempty"`
 }
 
+// Embed is a card a bot posts beside or instead of text: Discord's embed,
+// with the parts a reader sees.
+type Embed struct {
+	Title        string       `json:"title,omitempty"`
+	Description  string       `json:"description,omitempty"`
+	URL          string       `json:"url,omitempty"`
+	AuthorName   string       `json:"author_name,omitempty"`
+	Fields       []EmbedField `json:"fields,omitempty"`
+	FooterText   string       `json:"footer_text,omitempty"`
+	ImageURL     string       `json:"image_url,omitempty"`
+	ThumbnailURL string       `json:"thumbnail_url,omitempty"`
+}
+
+// EmbedField is one named value in an embed.
+type EmbedField struct {
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Inline bool   `json:"inline,omitempty"`
+}
+
+// Button is a button under a message, as the reader sees it. URL is set on a
+// link button; a button that runs something has none.
+type Button struct {
+	Label    string `json:"label"`
+	Emoji    string `json:"emoji,omitempty"`
+	URL      string `json:"url,omitempty"`
+	Disabled bool   `json:"disabled,omitempty"`
+}
+
+// Account is an account of ours on a platform: the user's own, or a bot the
+// user runs. Its conversations are those with a participant of its handle on
+// its platform.
+type Account struct {
+	ID          string `json:"id"`
+	Platform    string `json:"platform"`
+	Handle      string `json:"handle"`
+	DisplayName string `json:"display_name"`
+	// Kind is one of AccountKinds.
+	Kind      string `json:"kind"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
+// AccountPut is POST /accounts: an account found by (platform, handle),
+// made if new. An empty display name keeps the stored one.
+type AccountPut struct {
+	Platform    string `json:"platform"`
+	Handle      string `json:"handle"`
+	DisplayName string `json:"display_name"`
+	Kind        string `json:"kind"`
+}
+
 // Message is one message, as the store answers it.
 type Message struct {
 	ID             string `json:"id"`
@@ -55,6 +107,8 @@ type Message struct {
 	Kind              string       `json:"kind"`
 	Body              string       `json:"body"`
 	Attachments       []Attachment `json:"attachments"`
+	Embeds            []Embed      `json:"embeds"`
+	Buttons           []Button     `json:"buttons"`
 	ReplyToSourceRef  string       `json:"reply_to_source_ref,omitempty"`
 	CallSeconds       int          `json:"call_seconds,omitempty"`
 	Edited            bool         `json:"edited,omitempty"`
@@ -202,6 +256,10 @@ type ImportMessage struct {
 	Kind                  string       `json:"kind"`
 	Body                  string       `json:"body"`
 	Attachments           []Attachment `json:"attachments"`
+	// Embeds and Buttons replace the stored ones when the import sends any;
+	// none keeps what is stored.
+	Embeds                []Embed      `json:"embeds,omitempty"`
+	Buttons               []Button     `json:"buttons,omitempty"`
 	ReplyToSourceRef      string       `json:"reply_to_source_ref"`
 	CallSeconds           int          `json:"call_seconds"`
 	Edited                bool         `json:"edited"`
