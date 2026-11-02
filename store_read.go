@@ -438,14 +438,55 @@ func (s *Store) GetConversationDay(id string) (ConversationDayWithMessages, erro
 	return ConversationDayWithMessages{ConversationDay: day, Conversation: conversation, Messages: page.Messages}, nil
 }
 
-// inUninvolvedDay says whether a time falls in one of the spans.
-func inUninvolvedDay(spans [][2]int64, at int64) bool {
-	for _, span := range spans {
-		if at >= span[0] && at < span[1] {
-			return true
-		}
+// involvedGroupDays maps every group conversation to the local days, in
+// location, on which the user took part in it: wrote a message, or had a
+// message that replies to one of theirs or mentions one of their handles the
+// way Discord writes a mention (<@id>, <@!id>). A group with no such day maps
+// to an empty set, so all of it is left out; a conversation that is not a
+// group has no entry.
+func (s *Store) involvedGroupDays(location *time.Location) (map[string]map[string]bool, error) {
+	days := map[string]map[string]bool{}
+	groups, err := s.db.Query(`SELECT id FROM conversations WHERE is_group = 1`)
+	if err != nil {
+		return nil, err
 	}
-	return false
+	for groups.Next() {
+		var id string
+		if err := groups.Scan(&id); err != nil {
+			groups.Close()
+			return nil, err
+		}
+		days[id] = map[string]bool{}
+	}
+	groups.Close()
+	rows, err := s.db.Query(`
+		SELECT m.conversation_id, m.sent_at FROM messages m
+			JOIN conversations c ON c.id = m.conversation_id AND c.is_group = 1
+			JOIN participants p ON p.conversation_id = m.conversation_id AND p.handle = m.sender_handle AND p.is_self = 1
+		UNION ALL
+		SELECT m.conversation_id, m.sent_at FROM messages m
+			JOIN conversations c ON c.id = m.conversation_id AND c.is_group = 1
+			JOIN messages own ON own.conversation_id = m.conversation_id AND own.source_ref = m.reply_to_source_ref
+			JOIN participants op ON op.conversation_id = own.conversation_id AND op.handle = own.sender_handle AND op.is_self = 1
+			WHERE m.reply_to_source_ref != ''
+		UNION ALL
+		SELECT m.conversation_id, m.sent_at FROM messages m
+			JOIN conversations c ON c.id = m.conversation_id AND c.is_group = 1
+			JOIN participants sp ON sp.conversation_id = m.conversation_id AND sp.is_self = 1 AND sp.handle != ''
+			WHERE instr(m.body, '<@' || sp.handle || '>') > 0 OR instr(m.body, '<@!' || sp.handle || '>') > 0`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var conversationID string
+		var sentAt int64
+		if err := rows.Scan(&conversationID, &sentAt); err != nil {
+			return nil, err
+		}
+		days[conversationID][time.UnixMilli(sentAt).In(location).Format(time.DateOnly)] = true
+	}
+	return days, rows.Err()
 }
 
 // ActivityFilter is GET /activity.
@@ -457,7 +498,8 @@ type ActivityFilter struct {
 	After    int64
 	Before   int64
 	// Involved counts only messages on days the user took part in: a group's
-	// messages on a day of involvement none are left out.
+	// messages on a local day the user neither wrote, was replied to nor was
+	// mentioned in are left out.
 	Involved bool
 }
 
@@ -510,25 +552,15 @@ func (s *Store) Activity(filter ActivityFilter) ([]ActivityBucket, error) {
 		where = append(where, "m.conversation_id IN (SELECT conversation_id FROM participants WHERE person_id = ?)")
 		args = append(args, filter.PersonID)
 	}
-	// The spans of the days the user took no part in, by conversation, read
-	// once so each message is a lookup.
-	uninvolved := map[string][][2]int64{}
+	// The local days, in the zone asked, on which the user took part in each
+	// group: wrote there, or was replied to or mentioned. Read from the
+	// messages themselves, so a chat with no conversation-day rows (multichat's
+	// live log) is judged the same way.
+	var involvedDays map[string]map[string]bool
 	if filter.Involved {
-		spanRows, err := s.db.Query(`SELECT conversation_id, starts_at, ends_at FROM (SELECT d.conversation_id, d.starts_at, d.ends_at, ` + dayInvolvementSQL + ` AS involvement
-			FROM conversation_days d) WHERE involvement = 'none'`)
-		if err != nil {
+		if involvedDays, err = s.involvedGroupDays(location); err != nil {
 			return nil, err
 		}
-		for spanRows.Next() {
-			var conversationID string
-			var span [2]int64
-			if err := spanRows.Scan(&conversationID, &span[0], &span[1]); err != nil {
-				spanRows.Close()
-				return nil, err
-			}
-			uninvolved[conversationID] = append(uninvolved[conversationID], span)
-		}
-		spanRows.Close()
 	}
 	query := `SELECT m.sent_at, m.conversation_id, c.platform, COALESCE(p.person_id, ''), COALESCE(p.is_self, 0)
 		FROM messages m JOIN conversations c ON c.id = m.conversation_id
@@ -554,8 +586,10 @@ func (s *Store) Activity(filter ActivityFilter) ([]ActivityBucket, error) {
 		if err := rows.Scan(&sentAt, &conversationID, &platform, &senderPerson, &isSelf); err != nil {
 			return nil, err
 		}
-		if inUninvolvedDay(uninvolved[conversationID], sentAt) {
-			continue
+		if involvedDays != nil {
+			if days, isGroup := involvedDays[conversationID]; isGroup && !days[time.UnixMilli(sentAt).In(location).Format(time.DateOnly)] {
+				continue
+			}
 		}
 		var key string
 		switch filter.GroupBy {

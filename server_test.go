@@ -437,3 +437,27 @@ func TestADayInAGroupCountsOnlyWhenTheUserTookPart(t *testing.T) {
 		t.Fatalf("activity all = %+v, involved = %+v", all, involved)
 	}
 }
+
+func TestAGroupWithNoConversationDaysIsJudgedFromItsMessages(t *testing.T) {
+	ts := newTestServer(t)
+	var run Import
+	ts.call("POST", "/imports", ImportStart{Importer: "test"}, http.StatusCreated, &run)
+	message := func(ref, at_, sender, body string) ImportMessage {
+		return ImportMessage{ConversationSource: "matrix", ConversationSourceRef: "!room", SentAt: at(at_), SenderHandle: sender,
+			Kind: "text", Body: body, Source: "multichat", SourceRef: ref, SourceHash: ref}
+	}
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{
+		Conversations: []ImportConversation{{Platform: "discord", Source: "matrix", SourceRef: "!room", Title: "#hopecore", IsGroup: true, Participants: []Participant{
+			{Handle: "@me:x", IsSelf: true}, {Handle: "@carol:x"}}}},
+		Messages: []ImportMessage{
+			message("a", "2024-01-01T20:00:00Z", "@carol:x", "before I joined"),
+			message("b", "2024-01-02T20:00:00Z", "@carol:x", "morning"),
+			message("c", "2024-01-02T21:00:00Z", "@me:x", "hi"),
+		},
+	}, http.StatusOK, nil)
+	var involved []ActivityBucket
+	ts.call("GET", "/activity?group_by=platform&interval=year&time_zone=America/Los_Angeles&involved=true", nil, http.StatusOK, &involved)
+	if len(involved) != 1 || involved[0].Sent+involved[0].Received != 2 {
+		t.Fatalf("involved = %+v, want the day the user wrote, both its messages", involved)
+	}
+}
