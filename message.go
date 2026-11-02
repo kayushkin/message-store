@@ -77,6 +77,8 @@ type ConversationDay struct {
 	JournalEntryID   string `json:"journal_entry_id"`
 	// MessageCount counts the conversation's messages inside the span.
 	MessageCount int `json:"message_count"`
+	// Involvement is one of DayInvolvements: how the user took part that day.
+	Involvement string `json:"involvement"`
 }
 
 // ConversationDayWithMessages is GET /conversation-days/{id}: the day, its

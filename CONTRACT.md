@@ -17,10 +17,10 @@ a bad request (an unknown field included), 404 for a missing id.
 | `GET /conversations/{id}` | one conversation, participants and message summary; a merged id is a 301 whose relative `Location` is the conversation it merged into |
 | `GET /conversation-merges` | merged conversations, newest first, each with its whole old row and participants as `row`. `merged_into`, `limit` |
 | `PATCH /conversations/{id}/participants/{handle}` | `{"person_id":"person_000001"}` names the handle's person; `""` clears it |
-| `GET /conversation-days` | `conversation`, `journal_entry`, `person`, `from`, `to` (YYYY-MM-DD), `limit` |
+| `GET /conversation-days` | `conversation`, `journal_entry`, `person`, `from`, `to` (YYYY-MM-DD), `limit`; `involved=true` keeps only days the user took part in. Each day says its `involvement` (`GET /vocabulary` `day_involvements`): `direct` (not a group), `participated` (the user wrote that day), `addressed` (someone replied to them or mentioned them, Discord `<@id>`), or `none` |
 | `GET /conversation-days/{id}` | the day, its conversation and its messages |
 | `POST /conversation-days/journal-entries` | `[{"journal_source","journal_source_ref","journal_entry_id"}]`: records which journal entry held each day's transcript; answers `linked` and `unmatched` |
-| `GET /activity` | message counts per time bucket. `group_by=person\|conversation\|platform`, `interval=day\|week\|month\|year`, `time_zone` (IANA, required), `person`, `after`, `before` |
+| `GET /activity` | message counts per time bucket. `group_by=person\|conversation\|platform`, `interval=day\|week\|month\|year`, `time_zone` (IANA, required), `person`, `after`, `before`; `involved=true` leaves out a group's messages on days of involvement `none`, so a channel the user only belonged to does not fill a timeline |
 | `GET /imports`, `GET /imports/{id}` | import runs and what each wrote |
 | `POST /imports` | `{"importer","description"}` starts a run |
 | `POST /imports/{id}/batches` | `{"conversations","messages","conversation_days","supersessions","conversation_merges"}`, written in one transaction: one bad record writes nothing |

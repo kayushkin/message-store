@@ -391,3 +391,49 @@ func TestASourceThatKnowsLessNeverTakesAwayWhatAnotherSaid(t *testing.T) {
 		t.Fatalf("revisions = %d, first %s", len(revisions), revisions[0].Row)
 	}
 }
+
+func TestADayInAGroupCountsOnlyWhenTheUserTookPart(t *testing.T) {
+	ts := newTestServer(t)
+	var run Import
+	ts.call("POST", "/imports", ImportStart{Importer: "test"}, http.StatusCreated, &run)
+	message := func(ref, day, sender, body, replyTo string) ImportMessage {
+		return ImportMessage{ConversationSource: "discord", ConversationSourceRef: "chan", SentAt: at(day + "T12:00:00Z"), SenderHandle: sender,
+			Kind: "text", Body: body, ReplyToSourceRef: replyTo, Source: "discord", SourceRef: ref, SourceHash: ref}
+	}
+	dayOf := func(day string) ImportConversationDay {
+		return ImportConversationDay{ConversationSource: "discord", ConversationSourceRef: "chan", Day: day, TimeZone: "UTC"}
+	}
+	batch := ImportBatch{
+		Conversations: []ImportConversation{{Platform: "discord", Source: "discord", SourceRef: "chan", Title: "#general", IsGroup: true, Participants: []Participant{
+			{Handle: "1", DisplayName: "Me", IsSelf: true}, {Handle: "2", DisplayName: "Carol"}}}},
+		Messages: []ImportMessage{
+			message("a", "2024-01-01", "2", "before I joined", ""),
+			message("b", "2024-01-02", "1", "hi all", ""),
+			message("c", "2024-01-03", "2", "hey <@1> look", ""),
+			message("d", "2024-01-04", "2", "agreed", "b"),
+		},
+		ConversationDays: []ImportConversationDay{dayOf("2024-01-01"), dayOf("2024-01-02"), dayOf("2024-01-03"), dayOf("2024-01-04")},
+	}
+	ts.call("POST", "/imports/"+run.ID+"/batches", batch, http.StatusOK, nil)
+
+	var days []ConversationDay
+	ts.call("GET", "/conversation-days", nil, http.StatusOK, &days)
+	var got []string
+	for _, day := range days {
+		got = append(got, day.Day+" "+day.Involvement)
+	}
+	want := []string{"2024-01-01 none", "2024-01-02 participated", "2024-01-03 addressed", "2024-01-04 addressed"}
+	if strings.Join(got, ", ") != strings.Join(want, ", ") {
+		t.Fatalf("days = %v, want %v", got, want)
+	}
+	ts.call("GET", "/conversation-days?involved=true", nil, http.StatusOK, &days)
+	if len(days) != 3 || days[0].Day != "2024-01-02" {
+		t.Fatalf("involved days = %+v", days)
+	}
+	var all, involved []ActivityBucket
+	ts.call("GET", "/activity?group_by=platform&interval=year&time_zone=UTC", nil, http.StatusOK, &all)
+	ts.call("GET", "/activity?group_by=platform&interval=year&time_zone=UTC&involved=true", nil, http.StatusOK, &involved)
+	if len(all) != 1 || len(involved) != 1 || all[0].Sent+all[0].Received != 4 || involved[0].Sent+involved[0].Received != 3 {
+		t.Fatalf("activity all = %+v, involved = %+v", all, involved)
+	}
+}

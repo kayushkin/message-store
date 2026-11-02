@@ -272,7 +272,7 @@ func (h *handler) listDays(w http.ResponseWriter, r *http.Request) {
 	}
 	query := r.URL.Query()
 	days, err := h.s.ListConversationDays(DayFilter{ConversationID: query.Get("conversation"), JournalEntryID: query.Get("journal_entry"),
-		PersonID: query.Get("person"), From: query.Get("from"), To: query.Get("to"), Limit: limit})
+		PersonID: query.Get("person"), From: query.Get("from"), To: query.Get("to"), Involved: query.Get("involved") == "true", Limit: limit})
 	if err != nil {
 		writeError(w, err)
 		return
@@ -316,7 +316,7 @@ func (h *handler) activity(w http.ResponseWriter, r *http.Request) {
 	}
 	query := r.URL.Query()
 	buckets, err := h.s.Activity(ActivityFilter{GroupBy: query.Get("group_by"), Interval: query.Get("interval"), TimeZone: query.Get("time_zone"),
-		PersonID: query.Get("person"), After: after, Before: before})
+		PersonID: query.Get("person"), After: after, Before: before, Involved: query.Get("involved") == "true"})
 	if err != nil {
 		writeError(w, err)
 		return
