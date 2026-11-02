@@ -55,3 +55,18 @@ func TestAThreadNamesItsChannelAndAChannelNamesNone(t *testing.T) {
 		t.Fatalf("a channel's category is not a parent conversation: %q", got.ParentSourceRef)
 	}
 }
+
+func TestALineDiscordWroteWithNoTextSaysWhatHappened(t *testing.T) {
+	added := convertMessage(discordMessage{ID: "1", ChannelID: "5", Type: 1, Author: discordUser{ID: "900"}, Mentions: []discordUser{{ID: "42"}}})
+	if added.Kind != "system" || added.Body != "added <@42> to the thread" {
+		t.Fatalf("added = %+v", added)
+	}
+	left := convertMessage(discordMessage{ID: "2", ChannelID: "5", Type: 2, Author: discordUser{ID: "42"}, Mentions: []discordUser{{ID: "42"}}})
+	if left.Body != "left the thread" {
+		t.Fatalf("left = %q", left.Body)
+	}
+	named := convertMessage(discordMessage{ID: "3", ChannelID: "5", Type: 18, Author: discordUser{ID: "42"}, Content: "a thread name"})
+	if named.Body != "a thread name" {
+		t.Fatalf("a line Discord gave words keeps them: %q", named.Body)
+	}
+}

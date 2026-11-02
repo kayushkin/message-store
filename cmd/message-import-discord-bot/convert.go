@@ -41,6 +41,9 @@ func convertMessage(message discordMessage) messagestore.ImportMessage {
 	switch {
 	case !writtenMessageTypes[message.Type]:
 		converted.Kind = "system"
+		if converted.Body == "" {
+			converted.Body = systemLineWords(message)
+		}
 	case message.Content == "" && len(message.StickerItems) > 0:
 		converted.Kind, converted.Body = "sticker", message.StickerItems[0].Name
 	case message.Content == "" && len(message.Embeds) == 0 && len(message.Attachments) > 0:
@@ -104,4 +107,32 @@ func conversationOf(channel discordChannel) messagestore.ImportConversation {
 		conversation.ParentSourceRef = channel.ParentID
 	}
 	return conversation
+}
+
+// systemLineWords is what Discord's own app shows for a line it wrote, for
+// the kinds whose content comes empty, people named as mentions so a reader
+// sees their names. A kind not listed keeps an empty body.
+func systemLineWords(message discordMessage) string {
+	mentioned := ""
+	if len(message.Mentions) > 0 {
+		mentioned = "<@" + message.Mentions[0].ID + ">"
+	}
+	switch message.Type {
+	case 1: // RECIPIENT_ADD
+		if mentioned != "" {
+			return "added " + mentioned + " to the thread"
+		}
+	case 2: // RECIPIENT_REMOVE
+		if mentioned != "" && message.Mentions[0].ID != message.Author.ID {
+			return "removed " + mentioned + " from the thread"
+		}
+		return "left the thread"
+	case 6: // CHANNEL_PINNED_MESSAGE
+		return "pinned a message"
+	case 7: // USER_JOIN
+		return "joined the server"
+	case 21: // THREAD_STARTER_MESSAGE
+		return "started a thread from a message"
+	}
+	return ""
 }

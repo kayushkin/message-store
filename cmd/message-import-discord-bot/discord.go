@@ -183,6 +183,9 @@ type discordMessage struct {
 	StickerItems    []struct {
 		Name string `json:"name"`
 	} `json:"sticker_items"`
+	// Mentions are the people a message names; a system line names who it
+	// is about here.
+	Mentions         []discordUser `json:"mentions"`
 	MessageReference *struct {
 		MessageID string `json:"message_id"`
 	} `json:"message_reference"`
