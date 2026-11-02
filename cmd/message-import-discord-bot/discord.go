@@ -13,13 +13,21 @@ import (
 	"time"
 )
 
-const discordAPI = "https://discord.com/api/v10"
+// discordAPI is Discord's REST API; a test points it at a fake.
+var discordAPI = "https://discord.com/api/v10"
 
 // errNoAccess is a channel the bot may see listed but not read (Discord's 403
 // Missing Access), or one gone since it was listed (404).
 var errNoAccess = errors.New("the bot cannot read this channel")
 
-// discordClient calls Discord's REST API as one bot, waiting out rate limits.
+// retryableStatus are Discord's answers that mean "try again shortly".
+// retryWait is the first wait before trying again; each next one is longer.
+var retryWait = 2 * time.Second
+
+var retryableStatus = map[int]bool{http.StatusBadGateway: true, http.StatusServiceUnavailable: true, http.StatusGatewayTimeout: true}
+
+// discordClient calls Discord's REST API as one bot, waiting out rate limits
+// and retrying a gateway that timed out.
 type discordClient struct {
 	token string
 	http  *http.Client
@@ -74,6 +82,12 @@ func (c *discordClient) call(method, path string, query url.Values, body []byte,
 			}
 			_ = json.Unmarshal(answer, &limited)
 			time.Sleep(time.Duration((limited.RetryAfter + 0.1) * float64(time.Second)))
+			continue
+		}
+		// Discord's gateway sometimes times out or is briefly down; the call
+		// is tried again after a growing wait, and fails if it keeps on.
+		if retryableStatus[response.StatusCode] && attempt < 4 {
+			time.Sleep(time.Duration(attempt+1) * retryWait)
 			continue
 		}
 		// Wait out an exhausted bucket before the next call rather than be
