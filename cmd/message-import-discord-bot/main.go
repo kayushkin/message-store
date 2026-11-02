@@ -8,6 +8,12 @@
 // conversation it opens (with the bot and the person as participants); this
 // command then reads every DM conversation the store holds for the account.
 //
+// Discord answers a bot's DM channel with a user when asked to open one, the
+// one they already share if there is one, without sending anything or telling
+// the user. So -full also opens the DM channel with every person in the bot's
+// conversations and reads each that holds messages: DMs from before the bot
+// filed its channels, or that it never filed, are found that way.
+//
 // A run reads each channel from shortly before the last message the store
 // holds, so recent edits are caught; -full reads everything again, archived
 // threads included, and catches every edit.
@@ -92,6 +98,8 @@ type runner struct {
 	people map[string]string
 
 	channelsRead, channelsSkipped int
+	// directMessagesChecked counts the people whose DM channel -full opened.
+	directMessagesChecked int
 }
 
 func (run *runner) run() error {
@@ -132,8 +140,8 @@ func (run *runner) run() error {
 	if err := run.client.Finish(); err != nil {
 		return err
 	}
-	fmt.Printf("%s as %s: %d channels read, %d it cannot read, %d Discord calls\n%s\n",
-		run.account.ID, run.bot.displayName(), run.channelsRead, run.channelsSkipped, run.discord.requests, run.client.Report())
+	fmt.Printf("%s as %s: %d channels read, %d it cannot read, %d people's DM channels checked, %d Discord calls\n%s\n",
+		run.account.ID, run.bot.displayName(), run.channelsRead, run.channelsSkipped, run.directMessagesChecked, run.discord.requests, run.client.Report())
 	return nil
 }
 
@@ -183,6 +191,11 @@ func (run *runner) channels() ([]discordChannel, error) {
 			}
 		}
 	}
+	if run.full {
+		if err := run.findDirectMessages(found); err != nil {
+			return nil, err
+		}
+	}
 	for channelID, conversation := range run.stored {
 		if _, known := found[channelID]; known || conversation.IsGroup {
 			continue
@@ -202,6 +215,46 @@ func (run *runner) channels() ([]discordChannel, error) {
 	}
 	sort.Slice(channels, func(i, j int) bool { return snowflakeLess(channels[i].ID, channels[j].ID) })
 	return channels, nil
+}
+
+// findDirectMessages opens the bot's DM channel with each person in its
+// stored conversations and keeps every one that holds a message. A person the
+// bot may not write to (another bot, someone who shares no server with it)
+// is passed over.
+func (run *runner) findDirectMessages(found map[string]discordChannel) error {
+	handles := map[string]bool{}
+	for _, conversation := range run.stored {
+		for _, participant := range conversation.Participants {
+			if participant.Handle != run.bot.ID {
+				handles[participant.Handle] = true
+			}
+		}
+	}
+	sorted := make([]string, 0, len(handles))
+	for handle := range handles {
+		sorted = append(sorted, handle)
+	}
+	sort.Strings(sorted)
+	for _, handle := range sorted {
+		channel, err := run.discord.openDirectMessageChannel(handle)
+		if errors.Is(err, errNoAccess) || isRefusedRecipient(err) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("open the DM channel with %s: %w", handle, err)
+		}
+		run.directMessagesChecked++
+		if channel.LastMessageID != "" {
+			found[channel.ID] = channel
+		}
+	}
+	return nil
+}
+
+// isRefusedRecipient is Discord's 400 for a user the bot cannot open a DM
+// with, such as another bot.
+func isRefusedRecipient(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "answered 400")
 }
 
 // archivedThreads lists a channel's archived threads of one kind, every page.

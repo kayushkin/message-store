@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,32 +28,51 @@ type discordClient struct {
 }
 
 func (c *discordClient) get(path string, query url.Values, out any) error {
+	return c.call(http.MethodGet, path, query, nil, out)
+}
+
+// openDirectMessageChannel answers the bot's DM channel with a user: the one
+// they already share, or a new empty one. It sends nothing, and the user is
+// not told.
+func (c *discordClient) openDirectMessageChannel(userID string) (discordChannel, error) {
+	var channel discordChannel
+	body, err := json.Marshal(map[string]string{"recipient_id": userID})
+	if err != nil {
+		return channel, err
+	}
+	return channel, c.call(http.MethodPost, "/users/@me/channels", nil, body, &channel)
+}
+
+func (c *discordClient) call(method, path string, query url.Values, body []byte, out any) error {
 	target := discordAPI + path
 	if len(query) > 0 {
 		target += "?" + query.Encode()
 	}
 	for attempt := 0; ; attempt++ {
-		request, err := http.NewRequest(http.MethodGet, target, nil)
+		request, err := http.NewRequest(method, target, bytes.NewReader(body))
 		if err != nil {
 			return err
+		}
+		if body != nil {
+			request.Header.Set("Content-Type", "application/json")
 		}
 		request.Header.Set("Authorization", "Bot "+c.token)
 		request.Header.Set("User-Agent", "DiscordBot (https://github.com/kayushkin/message-store, 1) message-import-discord-bot")
 		response, err := c.http.Do(request)
 		if err != nil {
-			return fmt.Errorf("GET %s: %w", path, err)
+			return fmt.Errorf("%s %s: %w", method, path, err)
 		}
-		body, err := io.ReadAll(response.Body)
+		answer, err := io.ReadAll(response.Body)
 		response.Body.Close()
 		if err != nil {
-			return fmt.Errorf("GET %s: %w", path, err)
+			return fmt.Errorf("%s %s: %w", method, path, err)
 		}
 		c.requests++
 		if response.StatusCode == http.StatusTooManyRequests && attempt < 5 {
 			var limited struct {
 				RetryAfter float64 `json:"retry_after"`
 			}
-			_ = json.Unmarshal(body, &limited)
+			_ = json.Unmarshal(answer, &limited)
 			time.Sleep(time.Duration((limited.RetryAfter + 0.1) * float64(time.Second)))
 			continue
 		}
@@ -65,11 +85,11 @@ func (c *discordClient) get(path string, query url.Values, out any) error {
 		}
 		switch {
 		case response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusNotFound:
-			return fmt.Errorf("GET %s: %w (%d)", path, errNoAccess, response.StatusCode)
+			return fmt.Errorf("%s %s: %w (%d)", method, path, errNoAccess, response.StatusCode)
 		case response.StatusCode != http.StatusOK:
-			return fmt.Errorf("GET %s answered %d: %s", path, response.StatusCode, strings.TrimSpace(string(body)))
+			return fmt.Errorf("%s %s answered %d: %s", method, path, response.StatusCode, strings.TrimSpace(string(answer)))
 		}
-		return json.Unmarshal(body, out)
+		return json.Unmarshal(answer, out)
 	}
 }
 
