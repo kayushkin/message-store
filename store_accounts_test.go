@@ -72,3 +72,32 @@ func TestAnImportThatDoesNotKnowTheUserLeavesThemMarked(t *testing.T) {
 		t.Fatalf("participants = %+v, want the user still marked", conversations[0].Participants)
 	}
 }
+
+func TestASecondSourceReadingTheSameMessageWritesNoRevision(t *testing.T) {
+	ts := newTestServer(t)
+	var run Import
+	ts.call("POST", "/imports", ImportStart{Importer: "test"}, 201, &run)
+	message := ImportMessage{ConversationSource: "discord", ConversationSourceRef: "c1", SentAt: at("2026-01-02T10:00:00Z"),
+		SenderHandle: "7", Kind: "text", Body: "hello", Source: "discord", SourceRef: "m1", SourceHash: "first importer"}
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Conversations: []ImportConversation{{Platform: "discord", Source: "discord", SourceRef: "c1", IsGroup: true}},
+		Messages: []ImportMessage{message}}, 200, nil)
+	message.SourceHash = "second importer"
+	var counts ImportCounts
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Messages: []ImportMessage{message}}, 200, &counts)
+	if counts.MessagesUnchanged != 1 || counts.MessagesUpdated != 0 {
+		t.Fatalf("counts = %+v, want the message unchanged", counts)
+	}
+	var page MessagePage
+	ts.call("GET", "/messages", nil, 200, &page)
+	var revisions []MessageRevision
+	ts.call("GET", "/messages/"+page.Messages[0].ID+"/revisions", nil, 200, &revisions)
+	if len(revisions) != 0 {
+		t.Fatalf("revisions = %d, want none", len(revisions))
+	}
+	message.Body, message.SourceHash = "hello, edited", "third"
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Messages: []ImportMessage{message}}, 200, &counts)
+	ts.call("GET", "/messages/"+page.Messages[0].ID+"/revisions", nil, 200, &revisions)
+	if counts.MessagesUpdated != 1 || len(revisions) != 1 {
+		t.Fatalf("an edit gave counts %+v and %d revisions, want one of each", counts, len(revisions))
+	}
+}

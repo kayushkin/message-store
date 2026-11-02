@@ -267,7 +267,9 @@ func TestASupersededMessageIsKeptAsARecordAndItsIDRedirects(t *testing.T) {
 	merged.SourceHash = "b"
 	merged.Supersedes = []MessageKey{{Source: "multichat", SourceRef: "message_000042"}, {Source: "multichat", SourceRef: "message_never_stored"}}
 	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Messages: []ImportMessage{merged}}, http.StatusOK, &counts)
-	if counts.MessagesSuperseded != 1 || counts.MessagesUpdated != 1 {
+	// The same content under a new hash: the message is unchanged, and the
+	// row it supersedes is still retired.
+	if counts.MessagesSuperseded != 1 || counts.MessagesUnchanged != 1 {
 		t.Fatalf("counts = %+v", counts)
 	}
 	ts.call("GET", "/messages?q=game", nil, http.StatusOK, &page)
@@ -387,7 +389,9 @@ func TestASourceThatKnowsLessNeverTakesAwayWhatAnotherSaid(t *testing.T) {
 	}
 	var revisions []MessageRevision
 	ts.call("GET", "/messages/"+page.Messages[0].ID+"/revisions", nil, http.StatusOK, &revisions)
-	if len(revisions) != 3 || !strings.Contains(string(revisions[0].Row), `blobcry`) {
+	// The live log and the edit changed it; the fetch again changed nothing
+	// and kept no revision.
+	if len(revisions) != 2 || !strings.Contains(string(revisions[0].Row), `blobcry`) {
 		t.Fatalf("revisions = %d, first %s", len(revisions), revisions[0].Row)
 	}
 }

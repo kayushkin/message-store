@@ -453,10 +453,11 @@ func (w *batchWriter) upsertMessage(message ImportMessage) error {
 		w.counts.MessagesUnchanged++
 	default:
 		var kept storedMessage
-		var keptAttachments, keptEmbeds, keptButtons, rowJSON string
+		var keptAttachments, keptEmbeds, keptButtons, rowJSON, keptConversationID, keptKind string
+		var keptSentAt int64
 		var edited, deleted int
-		if err := w.tx.QueryRow(`SELECT sender_handle, body, attachments, embeds, buttons, reply_to_source_ref, call_seconds, edited, deleted_on_platform, `+messageRowJSON+`
-				FROM messages WHERE id = ?`, id).Scan(&kept.SenderHandle, &kept.Body, &keptAttachments, &keptEmbeds, &keptButtons, &kept.ReplyToSourceRef, &kept.CallSeconds,
+		if err := w.tx.QueryRow(`SELECT conversation_id, sent_at, kind, sender_handle, body, attachments, embeds, buttons, reply_to_source_ref, call_seconds, edited, deleted_on_platform, `+messageRowJSON+`
+				FROM messages WHERE id = ?`, id).Scan(&keptConversationID, &keptSentAt, &keptKind, &kept.SenderHandle, &kept.Body, &keptAttachments, &keptEmbeds, &keptButtons, &kept.ReplyToSourceRef, &kept.CallSeconds,
 			&edited, &deleted, &rowJSON); err != nil {
 			return err
 		}
@@ -474,6 +475,15 @@ func (w *batchWriter) upsertMessage(message ImportMessage) error {
 		mergedAttachments, _ := json.Marshal(merged.Attachments)
 		mergedEmbeds, _ := json.Marshal(merged.Embeds)
 		mergedButtons, _ := json.Marshal(merged.Buttons)
+		// Another source read the same message: nothing to write, and no
+		// revision of a row that did not change.
+		if conversationID == keptConversationID && message.SentAt == keptSentAt && message.Kind == keptKind &&
+			merged.SenderHandle == kept.SenderHandle && merged.Body == kept.Body && string(mergedAttachments) == keptAttachments &&
+			string(mergedEmbeds) == keptEmbeds && string(mergedButtons) == keptButtons && merged.ReplyToSourceRef == kept.ReplyToSourceRef &&
+			merged.CallSeconds == kept.CallSeconds && merged.Edited == kept.Edited && merged.DeletedOnPlatform == kept.DeletedOnPlatform {
+			w.counts.MessagesUnchanged++
+			break
+		}
 		if _, err := w.tx.Exec(`INSERT INTO message_revisions (message_id, import_id, revised_at, row_json) VALUES (?,?,?,?)`,
 			id, w.importID, w.now, rowJSON); err != nil {
 			return err
