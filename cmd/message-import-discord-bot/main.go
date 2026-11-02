@@ -63,7 +63,7 @@ func main() {
 	if authStoreToken == "" {
 		log.Fatal("AUTH_STORE_TOKEN is not set: the bot's Discord token is read from auth-store")
 	}
-	botToken, err := resolveBotToken(strings.TrimRight(settings.String(messagestore.SettingAuthStoreURL), "/"), authStoreToken, *credentialAccount)
+	botToken, credentialID, err := resolveBotToken(strings.TrimRight(settings.String(messagestore.SettingAuthStoreURL), "/"), authStoreToken, *credentialAccount)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -73,6 +73,7 @@ func main() {
 		peopleStoreURL: strings.TrimRight(settings.String(messagestore.SettingPeopleStoreURL), "/"),
 		full:           *full,
 		reread:         *reread,
+		credentialID:   credentialID,
 		people:         map[string]string{},
 	}
 	run.client = importclient.New(run.storeURL, *dryRun)
@@ -88,6 +89,9 @@ type runner struct {
 	peopleStoreURL string
 	full           bool
 	reread         time.Duration
+	// credentialID is auth-store's id of the bot's token, filed on the
+	// account so a sender can sign in as it.
+	credentialID string
 
 	bot     discordUser
 	account messagestore.Account
@@ -106,7 +110,7 @@ func (run *runner) run() error {
 	if err := run.discord.get("/users/@me", nil, &run.bot); err != nil {
 		return err
 	}
-	if err := run.storeCall(http.MethodPost, "/accounts", messagestore.AccountPut{Platform: "discord", Handle: run.bot.ID, DisplayName: run.bot.displayName(), Kind: "bot"}, &run.account); err != nil {
+	if err := run.storeCall(http.MethodPost, "/accounts", messagestore.AccountPut{Platform: "discord", Handle: run.bot.ID, DisplayName: run.bot.displayName(), Kind: "bot", CredentialID: run.credentialID}, &run.account); err != nil {
 		return err
 	}
 	var stored []messagestore.Conversation
@@ -405,35 +409,36 @@ func getJSON(address string, out any) (bool, error) {
 	return true, json.Unmarshal(body, out)
 }
 
-// resolveBotToken reads the bot's token from auth-store's provider "discord"
-// credential of the given account.
-func resolveBotToken(authStoreURL, authStoreToken, account string) (string, error) {
+// resolveBotToken reads the bot's token, and the credential's id, from
+// auth-store's provider "discord" credential of the given account.
+func resolveBotToken(authStoreURL, authStoreToken, account string) (token, credentialID string, err error) {
 	request, err := http.NewRequest(http.MethodGet, authStoreURL+"/api/resolve/discord?"+url.Values{"account": {account}}.Encode(), nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	request.Header.Set("Authorization", "Bearer "+authStoreToken)
 	request.Header.Set("X-Auth-App", importerName)
 	request.Header.Set("X-Auth-Reason", "discord:read-bot-messages")
 	response, err := httpClient.Do(request)
 	if err != nil {
-		return "", fmt.Errorf("auth-store: %w", err)
+		return "", "", fmt.Errorf("auth-store: %w", err)
 	}
 	defer response.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	if response.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("auth-store answered %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
+		return "", "", fmt.Errorf("auth-store answered %d: %s", response.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var credential struct {
+		ID     string `json:"id"`
 		APIKey string `json:"api_key"`
 	}
 	if err := json.Unmarshal(body, &credential); err != nil {
-		return "", fmt.Errorf("auth-store answer does not parse: %w", err)
+		return "", "", fmt.Errorf("auth-store answer does not parse: %w", err)
 	}
-	if credential.APIKey == "" {
-		return "", errors.New("auth-store credential has no api_key")
+	if credential.APIKey == "" || credential.ID == "" {
+		return "", "", errors.New("auth-store credential has no api_key or no id")
 	}
-	return credential.APIKey, nil
+	return credential.APIKey, credential.ID, nil
 }
 
 func init() { log.SetFlags(0); log.SetOutput(os.Stderr) }

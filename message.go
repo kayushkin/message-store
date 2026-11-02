@@ -13,6 +13,9 @@ type Conversation struct {
 	SourceRef string `json:"source_ref"`
 	Title     string `json:"title"`
 	IsGroup   bool   `json:"is_group"`
+	// ParentSourceRef is, for a thread, the id of the channel it hangs off,
+	// in the same source; empty for anything else.
+	ParentSourceRef string `json:"parent_source_ref"`
 	// Participants are everyone the store has seen in it, the user included.
 	Participants []Participant `json:"participants"`
 	// MessageCount, FirstMessageAt and LastMessageAt summarise its messages.
@@ -78,9 +81,12 @@ type Account struct {
 	Handle      string `json:"handle"`
 	DisplayName string `json:"display_name"`
 	// Kind is one of AccountKinds.
-	Kind      string `json:"kind"`
-	CreatedAt int64  `json:"created_at"`
-	UpdatedAt int64  `json:"updated_at"`
+	Kind string `json:"kind"`
+	// CredentialID is auth-store's id of the credential that signs in as
+	// the account (a bot's token), or empty when none is kept.
+	CredentialID string `json:"credential_id"`
+	CreatedAt    int64  `json:"created_at"`
+	UpdatedAt    int64  `json:"updated_at"`
 }
 
 // AccountPut is POST /accounts: an account found by (platform, handle),
@@ -90,6 +96,8 @@ type AccountPut struct {
 	Handle      string `json:"handle"`
 	DisplayName string `json:"display_name"`
 	Kind        string `json:"kind"`
+	// CredentialID, when set, replaces the stored one.
+	CredentialID string `json:"credential_id"`
 }
 
 // Message is one message, as the store answers it.
@@ -238,12 +246,14 @@ type ImportSupersession struct {
 // kept. A participant's person_id is written only when the batch gives one,
 // so a person set by hand survives an import that knows nobody.
 type ImportConversation struct {
-	Platform     string        `json:"platform"`
-	Source       string        `json:"source"`
-	SourceRef    string        `json:"source_ref"`
-	Title        string        `json:"title"`
-	IsGroup      bool          `json:"is_group"`
-	Participants []Participant `json:"participants"`
+	Platform  string `json:"platform"`
+	Source    string `json:"source"`
+	SourceRef string `json:"source_ref"`
+	Title     string `json:"title"`
+	IsGroup   bool   `json:"is_group"`
+	// ParentSourceRef names a thread's channel; empty keeps the stored one.
+	ParentSourceRef string        `json:"parent_source_ref,omitempty"`
+	Participants    []Participant `json:"participants"`
 }
 
 // ImportMessage is a message found by (source, source_ref). Its conversation
@@ -258,14 +268,14 @@ type ImportMessage struct {
 	Attachments           []Attachment `json:"attachments"`
 	// Embeds and Buttons replace the stored ones when the import sends any;
 	// none keeps what is stored.
-	Embeds                []Embed      `json:"embeds,omitempty"`
-	Buttons               []Button     `json:"buttons,omitempty"`
-	ReplyToSourceRef      string       `json:"reply_to_source_ref"`
-	CallSeconds           int          `json:"call_seconds"`
-	Edited                bool         `json:"edited"`
-	DeletedOnPlatform     bool         `json:"deleted_on_platform"`
-	Source                string       `json:"source"`
-	SourceRef             string       `json:"source_ref"`
+	Embeds            []Embed  `json:"embeds,omitempty"`
+	Buttons           []Button `json:"buttons,omitempty"`
+	ReplyToSourceRef  string   `json:"reply_to_source_ref"`
+	CallSeconds       int      `json:"call_seconds"`
+	Edited            bool     `json:"edited"`
+	DeletedOnPlatform bool     `json:"deleted_on_platform"`
+	Source            string   `json:"source"`
+	SourceRef         string   `json:"source_ref"`
 	// SourceHash is the importer's hash of what it read; an unchanged hash
 	// skips the row.
 	SourceHash string `json:"source_hash"`

@@ -226,9 +226,9 @@ type ConversationFilter struct {
 	// AccountID keeps the conversations the account takes part in: those
 	// with a participant of its handle on its platform.
 	AccountID string
-	Platform string
-	Query    string // matches the title or a participant's display name
-	Limit    int
+	Platform  string
+	Query     string // matches the title or a participant's display name
+	Limit     int
 }
 
 // ListConversations answers GET /conversations, most recently active first.
@@ -302,8 +302,8 @@ func (s *Store) queryStrings(query string, args ...any) ([]string, error) {
 func (s *Store) GetConversation(id string) (Conversation, error) {
 	var conversation Conversation
 	var isGroup int
-	err := s.db.QueryRow(`SELECT id, platform, source, source_ref, title, is_group, created_at, updated_at FROM conversations WHERE id = ?`, id).
-		Scan(&conversation.ID, &conversation.Platform, &conversation.Source, &conversation.SourceRef, &conversation.Title, &isGroup, &conversation.CreatedAt, &conversation.UpdatedAt)
+	err := s.db.QueryRow(`SELECT id, platform, source, source_ref, title, is_group, parent_source_ref, created_at, updated_at FROM conversations WHERE id = ?`, id).
+		Scan(&conversation.ID, &conversation.Platform, &conversation.Source, &conversation.SourceRef, &conversation.Title, &isGroup, &conversation.ParentSourceRef, &conversation.CreatedAt, &conversation.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		into, lookupErr := s.mergedInto(id)
 		if lookupErr != nil {

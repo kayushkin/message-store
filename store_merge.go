@@ -60,7 +60,7 @@ func (w *batchWriter) applyMerge(merge ImportConversationMerge) error {
 	var source, sourceRef, rowJSON string
 	err = w.tx.QueryRow(`SELECT source, source_ref, json_object(
 			'seq', seq, 'id', id, 'platform', platform, 'source', source, 'source_ref', source_ref, 'title', title,
-			'is_group', is_group, 'created_at', created_at, 'updated_at', updated_at,
+			'is_group', is_group, 'parent_source_ref', parent_source_ref, 'created_at', created_at, 'updated_at', updated_at,
 			'participants', (SELECT json_group_array(json_object('handle', handle, 'display_name', display_name,
 				'person_id', person_id, 'is_self', is_self)) FROM participants WHERE conversation_id = conversations.id))
 		FROM conversations WHERE id = ?`, mergedID).Scan(&source, &sourceRef, &rowJSON)

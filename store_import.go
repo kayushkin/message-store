@@ -232,10 +232,10 @@ func (w *batchWriter) upsertConversation(conversation ImportConversation) error 
 	if !contains(Platforms, conversation.Platform) {
 		return fmt.Errorf("%w: platform %q is not one of %v", ErrInvalid, conversation.Platform, Platforms)
 	}
-	var id, platform, title string
+	var id, platform, title, parentSourceRef string
 	var isGroup int
-	err := w.tx.QueryRow(`SELECT id, platform, title, is_group FROM conversations WHERE source = ? AND source_ref = ?`,
-		conversation.Source, conversation.SourceRef).Scan(&id, &platform, &title, &isGroup)
+	err := w.tx.QueryRow(`SELECT id, platform, title, is_group, parent_source_ref FROM conversations WHERE source = ? AND source_ref = ?`,
+		conversation.Source, conversation.SourceRef).Scan(&id, &platform, &title, &isGroup, &parentSourceRef)
 	if errors.Is(err, sql.ErrNoRows) {
 		// A merged conversation's key stands for the one it merged into, which
 		// keeps its own title and kind and gains the participants.
@@ -256,8 +256,8 @@ func (w *batchWriter) upsertConversation(conversation ImportConversation) error 
 			return err
 		}
 		id = newID
-		if _, err := w.tx.Exec(`INSERT INTO conversations (seq, id, platform, source, source_ref, title, is_group, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)`,
-			seq, id, conversation.Platform, conversation.Source, conversation.SourceRef, conversation.Title, boolInt(conversation.IsGroup), w.now, w.now); err != nil {
+		if _, err := w.tx.Exec(`INSERT INTO conversations (seq, id, platform, source, source_ref, title, is_group, parent_source_ref, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+			seq, id, conversation.Platform, conversation.Source, conversation.SourceRef, conversation.Title, boolInt(conversation.IsGroup), conversation.ParentSourceRef, w.now, w.now); err != nil {
 			return err
 		}
 		w.counts.ConversationsCreated++
@@ -270,9 +270,13 @@ func (w *batchWriter) upsertConversation(conversation ImportConversation) error 
 		if conversation.Title != "" {
 			newTitle = conversation.Title
 		}
-		if platform != conversation.Platform || newTitle != title || isGroup != boolInt(conversation.IsGroup) {
-			if _, err := w.tx.Exec(`UPDATE conversations SET platform = ?, title = ?, is_group = ?, updated_at = ? WHERE id = ?`,
-				conversation.Platform, newTitle, boolInt(conversation.IsGroup), w.now, id); err != nil {
+		newParent := parentSourceRef
+		if conversation.ParentSourceRef != "" {
+			newParent = conversation.ParentSourceRef
+		}
+		if platform != conversation.Platform || newTitle != title || isGroup != boolInt(conversation.IsGroup) || newParent != parentSourceRef {
+			if _, err := w.tx.Exec(`UPDATE conversations SET platform = ?, title = ?, is_group = ?, parent_source_ref = ?, updated_at = ? WHERE id = ?`,
+				conversation.Platform, newTitle, boolInt(conversation.IsGroup), newParent, w.now, id); err != nil {
 				return err
 			}
 			w.counts.ConversationsUpdated++

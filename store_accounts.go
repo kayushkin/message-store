@@ -7,17 +7,17 @@ import (
 	"strings"
 )
 
-const accountColumns = `id, platform, handle, display_name, kind, created_at, updated_at`
+const accountColumns = `id, platform, handle, display_name, kind, credential_id, created_at, updated_at`
 
 func scanAccount(row interface{ Scan(...any) error }) (Account, error) {
 	var account Account
-	err := row.Scan(&account.ID, &account.Platform, &account.Handle, &account.DisplayName, &account.Kind, &account.CreatedAt, &account.UpdatedAt)
+	err := row.Scan(&account.ID, &account.Platform, &account.Handle, &account.DisplayName, &account.Kind, &account.CredentialID, &account.CreatedAt, &account.UpdatedAt)
 	return account, err
 }
 
 // PutAccount finds the account by (platform, handle) and makes it if new. A
-// display name or kind it sends replaces the stored one; an empty display
-// name keeps it.
+// display name, credential or kind it sends replaces the stored one; an
+// empty display name or credential keeps it.
 func (s *Store) PutAccount(put AccountPut) (Account, error) {
 	if strings.TrimSpace(put.Handle) == "" {
 		return Account{}, fmt.Errorf("%w: handle is required", ErrInvalid)
@@ -45,16 +45,18 @@ func (s *Store) PutAccount(put AccountPut) (Account, error) {
 			return Account{}, err
 		}
 		id = formatID(prefixAccount, seq)
-		if _, err := tx.Exec(`INSERT INTO accounts (seq, id, platform, handle, display_name, kind, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)`,
-			seq, id, put.Platform, put.Handle, put.DisplayName, put.Kind, now, now); err != nil {
+		if _, err := tx.Exec(`INSERT INTO accounts (seq, id, platform, handle, display_name, kind, credential_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)`,
+			seq, id, put.Platform, put.Handle, put.DisplayName, put.Kind, put.CredentialID, now, now); err != nil {
 			return Account{}, err
 		}
 	case err != nil:
 		return Account{}, err
 	default:
-		if _, err := tx.Exec(`UPDATE accounts SET display_name = CASE WHEN ? != '' THEN ? ELSE display_name END, kind = ?, updated_at = ?
-			WHERE id = ? AND (kind != ? OR (? != '' AND display_name != ?))`,
-			put.DisplayName, put.DisplayName, put.Kind, now, id, put.Kind, put.DisplayName, put.DisplayName); err != nil {
+		if _, err := tx.Exec(`UPDATE accounts SET display_name = CASE WHEN ? != '' THEN ? ELSE display_name END,
+				credential_id = CASE WHEN ? != '' THEN ? ELSE credential_id END, kind = ?, updated_at = ?
+			WHERE id = ? AND (kind != ? OR (? != '' AND display_name != ?) OR (? != '' AND credential_id != ?))`,
+			put.DisplayName, put.DisplayName, put.CredentialID, put.CredentialID, put.Kind, now,
+			id, put.Kind, put.DisplayName, put.DisplayName, put.CredentialID, put.CredentialID); err != nil {
 			return Account{}, err
 		}
 	}

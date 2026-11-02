@@ -101,3 +101,24 @@ func TestASecondSourceReadingTheSameMessageWritesNoRevision(t *testing.T) {
 		t.Fatalf("an edit gave counts %+v and %d revisions, want one of each", counts, len(revisions))
 	}
 }
+
+func TestAnAccountKeepsItsCredentialAndAThreadKeepsItsChannel(t *testing.T) {
+	ts := newTestServer(t)
+	var bot Account
+	ts.call("POST", "/accounts", AccountPut{Platform: "discord", Handle: "900", Kind: "bot", CredentialID: "cred_1"}, 200, &bot)
+	ts.call("POST", "/accounts", AccountPut{Platform: "discord", Handle: "900", Kind: "bot"}, 200, &bot)
+	if bot.CredentialID != "cred_1" {
+		t.Fatalf("credential = %q, want it kept", bot.CredentialID)
+	}
+	var run Import
+	ts.call("POST", "/imports", ImportStart{Importer: "test"}, 201, &run)
+	thread := ImportConversation{Platform: "discord", Source: "discord", SourceRef: "t1", Title: "a thread", IsGroup: true, ParentSourceRef: "c1"}
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Conversations: []ImportConversation{thread}}, 200, nil)
+	thread.ParentSourceRef = ""
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Conversations: []ImportConversation{thread}}, 200, nil)
+	var conversations []Conversation
+	ts.call("GET", "/conversations", nil, 200, &conversations)
+	if conversations[0].ParentSourceRef != "c1" {
+		t.Fatalf("parent = %q, want c1 kept", conversations[0].ParentSourceRef)
+	}
+}

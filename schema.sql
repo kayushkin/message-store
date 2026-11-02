@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     source_ref   TEXT NOT NULL,                -- the chat's id there (a Discord channel id, a Skype ChatID…)
     title        TEXT NOT NULL DEFAULT '',     -- as the platform names it; empty for most direct chats
     is_group     INTEGER NOT NULL DEFAULT 0,
+    parent_source_ref TEXT NOT NULL DEFAULT '', -- a thread's channel, in the same source; '' for anything else
     created_at   INTEGER NOT NULL,
     updated_at   INTEGER NOT NULL,
     UNIQUE (source, source_ref)
@@ -167,6 +168,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     handle       TEXT NOT NULL,                -- the account's user id there, as participants.handle holds it
     display_name TEXT NOT NULL DEFAULT '',     -- for display only; never joined on
     kind         TEXT NOT NULL,                -- vocabulary.go AccountKinds
+    credential_id TEXT NOT NULL DEFAULT '',    -- auth-store's id of the credential that signs in as the account; '' when none is kept
     created_at   INTEGER NOT NULL,
     updated_at   INTEGER NOT NULL,
     UNIQUE (platform, handle)

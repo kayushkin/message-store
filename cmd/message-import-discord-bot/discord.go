@@ -155,6 +155,11 @@ func holdsMessages(channelType int) bool {
 	return false
 }
 
+// isThread says whether a channel of this type is a thread.
+func isThread(channelType int) bool {
+	return channelType == channelAnnounceThread || channelType == channelPublicThread || channelType == channelPrivateThread
+}
+
 // hasThreads says whether threads can hang off a channel of this type.
 func hasThreads(channelType int) bool {
 	switch channelType {

@@ -46,3 +46,12 @@ func TestSnowflakesCountFromDiscordsEpoch(t *testing.T) {
 		t.Fatal("snowflakes compare as numbers")
 	}
 }
+
+func TestAThreadNamesItsChannelAndAChannelNamesNone(t *testing.T) {
+	if got := conversationOf(discordChannel{ID: "t1", Type: channelPublicThread, ParentID: "c1"}); got.ParentSourceRef != "c1" {
+		t.Fatalf("thread parent = %q", got.ParentSourceRef)
+	}
+	if got := conversationOf(discordChannel{ID: "c1", Type: channelText, ParentID: "category"}); got.ParentSourceRef != "" {
+		t.Fatalf("a channel's category is not a parent conversation: %q", got.ParentSourceRef)
+	}
+}

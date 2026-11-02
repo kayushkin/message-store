@@ -93,11 +93,15 @@ func buttonsOf(components []discordComponent) []messagestore.Button {
 // conversationOf is a channel as a conversation: a server channel or thread
 // is a group named as Discord names it; a DM is direct and unnamed.
 func conversationOf(channel discordChannel) messagestore.ImportConversation {
-	return messagestore.ImportConversation{
+	conversation := messagestore.ImportConversation{
 		Platform:  "discord",
 		Source:    sourceDiscord,
 		SourceRef: channel.ID,
 		Title:     channel.Name,
 		IsGroup:   channel.Type != channelDirect,
 	}
+	if isThread(channel.Type) {
+		conversation.ParentSourceRef = channel.ParentID
+	}
+	return conversation
 }

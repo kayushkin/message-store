@@ -89,6 +89,8 @@ func Open(dataDir string) (*Store, error) {
 var addedColumns = []struct{ table, column, definition string }{
 	{"messages", "embeds", "TEXT NOT NULL DEFAULT '[]'"},
 	{"messages", "buttons", "TEXT NOT NULL DEFAULT '[]'"},
+	{"conversations", "parent_source_ref", "TEXT NOT NULL DEFAULT ''"},
+	{"accounts", "credential_id", "TEXT NOT NULL DEFAULT ''"},
 }
 
 func addMissingColumns(db *sql.DB) error {
