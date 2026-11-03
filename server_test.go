@@ -80,10 +80,10 @@ func sampleBatch() ImportBatch {
 			}},
 		},
 		Messages: []ImportMessage{
-			{ConversationSource: "skype", ConversationSourceRef: "chat-carol", SentAt: at("2016-03-01T23:30:00Z"), SenderHandle: "carol_s", Kind: "text", Body: "late night hello", Source: "skype", SourceRef: "r1", SourceHash: "a"},
-			{ConversationSource: "skype", ConversationSourceRef: "chat-carol", SentAt: at("2016-03-02T00:30:00Z"), SenderHandle: "me_self", Kind: "text", Body: "hi Carol", Source: "skype", SourceRef: "r2", SourceHash: "a"},
-			{ConversationSource: "discord", ConversationSourceRef: "1000", SentAt: at("2016-03-01T12:00:00Z"), SenderHandle: "3", Kind: "text", Body: "game night?", Source: "discord", SourceRef: "m1", SourceHash: "a"},
-			{ConversationSource: "discord", ConversationSourceRef: "1000", SentAt: at("2016-03-01T12:01:00Z"), SenderHandle: "1", Kind: "media", Attachments: []Attachment{{PhotoID: "photo_000001"}}, Source: "discord", SourceRef: "m2", SourceHash: "a"},
+			{BodySource: "platform", ConversationSource: "skype", ConversationSourceRef: "chat-carol", SentAt: at("2016-03-01T23:30:00Z"), SenderHandle: "carol_s", Kind: "text", Body: "late night hello", Source: "skype", SourceRef: "r1", SourceHash: "a"},
+			{BodySource: "platform", ConversationSource: "skype", ConversationSourceRef: "chat-carol", SentAt: at("2016-03-02T00:30:00Z"), SenderHandle: "me_self", Kind: "text", Body: "hi Carol", Source: "skype", SourceRef: "r2", SourceHash: "a"},
+			{BodySource: "platform", ConversationSource: "discord", ConversationSourceRef: "1000", SentAt: at("2016-03-01T12:00:00Z"), SenderHandle: "3", Kind: "text", Body: "game night?", Source: "discord", SourceRef: "m1", SourceHash: "a"},
+			{BodySource: "platform", ConversationSource: "discord", ConversationSourceRef: "1000", SentAt: at("2016-03-01T12:01:00Z"), SenderHandle: "1", Kind: "media", Attachments: []Attachment{{PhotoID: "photo_000001"}}, Source: "discord", SourceRef: "m2", SourceHash: "a"},
 		},
 		ConversationDays: []ImportConversationDay{
 			{ConversationSource: "skype", ConversationSourceRef: "chat-carol", Day: "2016-03-01", TimeZone: "Europe/Lisbon", JournalSource: "skype", JournalSourceRef: "chat-carol/2016-03-01"},
@@ -247,7 +247,7 @@ func TestASupersededMessageIsKeptAsARecordAndItsIDRedirects(t *testing.T) {
 	importSample(ts)
 	var run Import
 	ts.call("POST", "/imports", ImportStart{Importer: "test"}, http.StatusCreated, &run)
-	liveCopy := ImportMessage{ConversationSource: "discord", ConversationSourceRef: "1000", SentAt: at("2016-03-01T12:00:00Z"), SenderHandle: "3",
+	liveCopy := ImportMessage{BodySource: "platform", ConversationSource: "discord", ConversationSourceRef: "1000", SentAt: at("2016-03-01T12:00:00Z"), SenderHandle: "3",
 		Kind: "text", Body: "game night?", Source: "multichat", SourceRef: "message_000042", SourceHash: "a"}
 	var counts ImportCounts
 	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Messages: []ImportMessage{liveCopy}}, http.StatusOK, &counts)
@@ -316,7 +316,7 @@ func TestASupersessionRetiresARowInFavorOfAStoredMessage(t *testing.T) {
 	importSample(ts)
 	var run Import
 	ts.call("POST", "/imports", ImportStart{Importer: "test"}, http.StatusCreated, &run)
-	liveCopy := ImportMessage{ConversationSource: "skype", ConversationSourceRef: "chat-carol", SentAt: at("2016-03-02T00:30:00Z"), SenderHandle: "me_self",
+	liveCopy := ImportMessage{BodySource: "platform", ConversationSource: "skype", ConversationSourceRef: "chat-carol", SentAt: at("2016-03-02T00:30:00Z"), SenderHandle: "me_self",
 		Kind: "text", Body: "hi Carol", Source: "multichat", SourceRef: "message_000077", SourceHash: "x"}
 	var counts ImportCounts
 	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Messages: []ImportMessage{liveCopy}}, http.StatusOK, &counts)
@@ -357,7 +357,7 @@ func TestASourceThatKnowsLessNeverTakesAwayWhatAnotherSaid(t *testing.T) {
 	ts := newTestServer(t)
 	run := importSample(ts)
 	discordMessage := func(body, hash string, attachments []Attachment, deleted bool) ImportBatch {
-		return ImportBatch{Messages: []ImportMessage{{ConversationSource: "discord", ConversationSourceRef: "1000", SentAt: at("2016-03-01T12:05:00Z"),
+		return ImportBatch{Messages: []ImportMessage{{BodySource: "platform", ConversationSource: "discord", ConversationSourceRef: "1000", SentAt: at("2016-03-01T12:05:00Z"),
 			SenderHandle: "2", Kind: "text", Body: body, Attachments: attachments, DeletedOnPlatform: deleted, Source: "discord", SourceRef: "m3", SourceHash: hash}}}
 	}
 	var counts ImportCounts
@@ -401,7 +401,7 @@ func TestADayInAGroupCountsOnlyWhenTheUserTookPart(t *testing.T) {
 	var run Import
 	ts.call("POST", "/imports", ImportStart{Importer: "test"}, http.StatusCreated, &run)
 	message := func(ref, day, sender, body, replyTo string) ImportMessage {
-		return ImportMessage{ConversationSource: "discord", ConversationSourceRef: "chan", SentAt: at(day + "T12:00:00Z"), SenderHandle: sender,
+		return ImportMessage{BodySource: "platform", ConversationSource: "discord", ConversationSourceRef: "chan", SentAt: at(day + "T12:00:00Z"), SenderHandle: sender,
 			Kind: "text", Body: body, ReplyToSourceRef: replyTo, Source: "discord", SourceRef: ref, SourceHash: ref}
 	}
 	dayOf := func(day string) ImportConversationDay {
@@ -447,7 +447,7 @@ func TestAGroupWithNoConversationDaysIsJudgedFromItsMessages(t *testing.T) {
 	var run Import
 	ts.call("POST", "/imports", ImportStart{Importer: "test"}, http.StatusCreated, &run)
 	message := func(ref, at_, sender, body string) ImportMessage {
-		return ImportMessage{ConversationSource: "matrix", ConversationSourceRef: "!room", SentAt: at(at_), SenderHandle: sender,
+		return ImportMessage{BodySource: "platform", ConversationSource: "matrix", ConversationSourceRef: "!room", SentAt: at(at_), SenderHandle: sender,
 			Kind: "text", Body: body, Source: "multichat", SourceRef: ref, SourceHash: ref}
 	}
 	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{

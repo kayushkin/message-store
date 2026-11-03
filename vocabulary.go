@@ -12,6 +12,15 @@ var MessageKinds = []string{
 	"system",  // a line the platform wrote: someone joined, the title changed
 }
 
+// BodySources are where a message's text came from. The platform's own text
+// outranks a bridge's rendering of it: a bridge rewrites what it carries
+// (Discord's mention and time tokens become plain names and UTC times), so a
+// bridge's text never replaces the platform's.
+var BodySources = []string{
+	"platform", // the app's own text: an export, a data package, its API
+	"bridge",   // a bridge's rendering of the message, as a Matrix bridge carried it
+}
+
 // AccountKinds are whose an account of ours is.
 var AccountKinds = []string{
 	"user", // the user's own account
@@ -48,10 +57,11 @@ type Vocabulary struct {
 	ActivityIntervals      []string `json:"activity_intervals"`
 	DayInvolvements        []string `json:"day_involvements"`
 	AccountKinds           []string `json:"account_kinds"`
+	BodySources            []string `json:"body_sources"`
 }
 
 func vocabulary() Vocabulary {
-	return Vocabulary{Platforms: Platforms, ConversationMergeRules: ConversationMergeRules, MessageKinds: MessageKinds, ActivityGroupings: ActivityGroupings, ActivityIntervals: ActivityIntervals, DayInvolvements: DayInvolvements, AccountKinds: AccountKinds}
+	return Vocabulary{Platforms: Platforms, ConversationMergeRules: ConversationMergeRules, MessageKinds: MessageKinds, ActivityGroupings: ActivityGroupings, ActivityIntervals: ActivityIntervals, DayInvolvements: DayInvolvements, AccountKinds: AccountKinds, BodySources: BodySources}
 }
 
 func contains(list []string, value string) bool {

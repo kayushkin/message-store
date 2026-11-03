@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"strconv"
+
 	messagestore "github.com/kayushkin/message-store"
 	"github.com/kayushkin/message-store/internal/importclient"
 )
@@ -24,6 +27,7 @@ func convertMessage(message discordMessage) messagestore.ImportMessage {
 		SentAt:                message.Timestamp.UnixMilli(),
 		SenderHandle:          message.Author.ID,
 		Body:                  message.Content,
+		BodySource:            "platform",
 		Edited:                message.EditedTimestamp != nil,
 		Source:                sourceDiscord,
 		SourceRef:             message.ID,
@@ -41,8 +45,8 @@ func convertMessage(message discordMessage) messagestore.ImportMessage {
 	switch {
 	case !writtenMessageTypes[message.Type]:
 		converted.Kind = "system"
-		if converted.Body == "" {
-			converted.Body = systemLineWords(message)
+		if words := systemLineWords(message); words != "" {
+			converted.Body = words
 		}
 	case message.Content == "" && len(message.StickerItems) > 0:
 		converted.Kind, converted.Body = "sticker", message.StickerItems[0].Name
@@ -109,9 +113,10 @@ func conversationOf(channel discordChannel) messagestore.ImportConversation {
 	return conversation
 }
 
-// systemLineWords is what Discord's own app shows for a line it wrote, for
-// the kinds whose content comes empty, people named as mentions so a reader
-// sees their names. A kind not listed keeps an empty body.
+// systemLineWords is what Discord's own app shows for a line it wrote whose
+// content holds no words of its own (empty, or a boost's count), people
+// named as mentions so a reader sees their names. A kind not listed, or a
+// line Discord gave words, answers "" and keeps its content.
 func systemLineWords(message discordMessage) string {
 	mentioned := ""
 	if len(message.Mentions) > 0 {
@@ -133,6 +138,37 @@ func systemLineWords(message discordMessage) string {
 		return "joined the server"
 	case 21: // THREAD_STARTER_MESSAGE
 		return "started a thread from a message"
+	case 8, 9, 10, 11: // USER_PREMIUM_GUILD_SUBSCRIPTION and its tiers 1 to 3
+		boosted := "boosted the server"
+		// Discord puts the number of boosts in the content when it is more than one.
+		if count, err := strconv.Atoi(message.Content); err == nil && count > 1 {
+			boosted = fmt.Sprintf("boosted the server %d times", count)
+		}
+		if message.Type > 8 {
+			return fmt.Sprintf("%s, and it reached level %d", boosted, message.Type-8)
+		}
+		return boosted
+	case 46: // POLL_RESULT
+		return pollResultWords(message)
 	}
 	return ""
+}
+
+// pollResultWords is a poll's result as Discord's app states it, from the
+// fields of the poll_result card Discord attaches to the line.
+func pollResultWords(message discordMessage) string {
+	fields := map[string]string{}
+	for _, embed := range message.Embeds {
+		for _, field := range embed.Fields {
+			fields[field.Name] = field.Value
+		}
+	}
+	question := fields["poll_question_text"]
+	if question == "" {
+		return "a poll closed"
+	}
+	if winner := fields["victor_answer_text"]; winner != "" {
+		return fmt.Sprintf("the poll %q closed: %q won with %s of %s votes", question, winner, fields["victor_answer_votes"], fields["total_votes"])
+	}
+	return fmt.Sprintf("the poll %q closed with %s votes and no single winner", question, fields["total_votes"])
 }

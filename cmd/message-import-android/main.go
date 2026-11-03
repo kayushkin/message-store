@@ -417,7 +417,7 @@ func (o options) message(conversationKey string, message *androidmessages.Messag
 	if body == "" && len(attachments) > 0 {
 		kind = "media"
 	}
-	row := messagestore.ImportMessage{ConversationSource: Source, ConversationSourceRef: conversationKey, SentAt: message.Time.UnixMilli(),
+	row := messagestore.ImportMessage{BodySource: "platform", ConversationSource: Source, ConversationSourceRef: conversationKey, SentAt: message.Time.UnixMilli(),
 		SenderHandle: sender, Kind: kind, Body: body, Attachments: attachments, Source: Source, SourceRef: hashRef("message:", message.DedupeKey)}
 	row.SourceHash = importclient.MessageHash(row)
 	return row, secret
@@ -441,7 +441,7 @@ func (o options) call(conversationKey string, call *androidmessages.Call) messag
 	if !known {
 		body = fmt.Sprintf("call (call log type %d)", call.Type)
 	}
-	row := messagestore.ImportMessage{ConversationSource: Source, ConversationSourceRef: conversationKey, SentAt: call.Time.UnixMilli(),
+	row := messagestore.ImportMessage{BodySource: "platform", ConversationSource: Source, ConversationSourceRef: conversationKey, SentAt: call.Time.UnixMilli(),
 		SenderHandle: sender, Kind: "call", Body: body, Attachments: []messagestore.Attachment{}, CallSeconds: call.DurationSeconds,
 		Source: Source, SourceRef: hashRef("call:", call.DedupeKey)}
 	row.SourceHash = importclient.MessageHash(row)

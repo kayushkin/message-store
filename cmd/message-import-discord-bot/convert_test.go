@@ -70,3 +70,29 @@ func TestALineDiscordWroteWithNoTextSaysWhatHappened(t *testing.T) {
 		t.Fatalf("a line Discord gave words keeps them: %q", named.Body)
 	}
 }
+
+func TestABoostAndAPollResultSayWhatHappened(t *testing.T) {
+	cases := []struct {
+		message discordMessage
+		want    string
+	}{
+		{discordMessage{ID: "1", Type: 8, Author: discordUser{ID: "7"}}, "boosted the server"},
+		{discordMessage{ID: "2", Type: 8, Author: discordUser{ID: "7"}, Content: "3"}, "boosted the server 3 times"},
+		{discordMessage{ID: "3", Type: 10, Author: discordUser{ID: "7"}}, "boosted the server, and it reached level 2"},
+	}
+	var poll discordMessage
+	if err := json.Unmarshal([]byte(`{"id":"4","channel_id":"5","type":46,"author":{"id":"7"},"embeds":[{"type":"poll_result","fields":[
+		{"name":"poll_question_text","value":"Pizza or tacos?"},{"name":"victor_answer_text","value":"Tacos"},
+		{"name":"victor_answer_votes","value":"5"},{"name":"total_votes","value":"8"}]}]}`), &poll); err != nil {
+		t.Fatal(err)
+	}
+	cases = append(cases, struct {
+		message discordMessage
+		want    string
+	}{poll, `the poll "Pizza or tacos?" closed: "Tacos" won with 5 of 8 votes`})
+	for _, c := range cases {
+		if got := convertMessage(c.message); got.Kind != "system" || got.Body != c.want {
+			t.Errorf("type %d: %q (%s), want %q", c.message.Type, got.Body, got.Kind, c.want)
+		}
+	}
+}

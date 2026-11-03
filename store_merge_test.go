@@ -22,9 +22,9 @@ func TestConversationMergeMovesEverythingAndTheMergedKeyResolves(t *testing.T) {
 				{Handle: "@gmweb_c:example.org", DisplayName: "Carol"}}},
 		},
 		Messages: []ImportMessage{
-			{ConversationSource: "sms", ConversationSourceRef: phone.SourceRef, SentAt: at("2025-01-01T10:00:00Z"), SenderHandle: "+12025550101", Kind: "text", Body: "old", Source: "sms", SourceRef: "p1"},
-			{ConversationSource: "matrix", ConversationSourceRef: bridgeRoom.SourceRef, SentAt: at("2026-07-01T10:00:00Z"), SenderHandle: "@gm_5:example.org", Kind: "text", Body: "bridge", Source: "multichat", SourceRef: "m1"},
-			{ConversationSource: "matrix", ConversationSourceRef: webRoom.SourceRef, SentAt: at("2026-10-01T10:00:00Z"), SenderHandle: "@gmweb_c:example.org", Kind: "text", Body: "web", Source: "multichat", SourceRef: "m2"},
+			{BodySource: "platform", ConversationSource: "sms", ConversationSourceRef: phone.SourceRef, SentAt: at("2025-01-01T10:00:00Z"), SenderHandle: "+12025550101", Kind: "text", Body: "old", Source: "sms", SourceRef: "p1"},
+			{BodySource: "platform", ConversationSource: "matrix", ConversationSourceRef: bridgeRoom.SourceRef, SentAt: at("2026-07-01T10:00:00Z"), SenderHandle: "@gm_5:example.org", Kind: "text", Body: "bridge", Source: "multichat", SourceRef: "m1"},
+			{BodySource: "platform", ConversationSource: "matrix", ConversationSourceRef: webRoom.SourceRef, SentAt: at("2026-10-01T10:00:00Z"), SenderHandle: "@gmweb_c:example.org", Kind: "text", Body: "web", Source: "multichat", SourceRef: "m2"},
 		},
 	}, http.StatusOK, nil)
 	var conversations []Conversation
@@ -69,7 +69,7 @@ func TestConversationMergeMovesEverythingAndTheMergedKeyResolves(t *testing.T) {
 	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{
 		Conversations: []ImportConversation{{Platform: "sms", Source: webRoom.Source, SourceRef: webRoom.SourceRef, Title: "Carol, Me Self", IsGroup: true,
 			Participants: []Participant{{Handle: "@gmweb_c:example.org", PersonID: "person_000012"}}}},
-		Messages: []ImportMessage{{ConversationSource: "matrix", ConversationSourceRef: webRoom.SourceRef, SentAt: at("2026-10-02T10:00:00Z"),
+		Messages: []ImportMessage{{BodySource: "platform", ConversationSource: "matrix", ConversationSourceRef: webRoom.SourceRef, SentAt: at("2026-10-02T10:00:00Z"),
 			SenderHandle: "@gmweb_c:example.org", Kind: "text", Body: "later", Source: "multichat", SourceRef: "m3"}},
 	}, http.StatusOK, &counts)
 	if counts.ConversationsCreated != 0 || counts.MessagesCreated != 1 {

@@ -130,7 +130,7 @@ func send(sink importclient.Sink, conversations []skypelog.Conversation, locatio
 				return fmt.Errorf("record number %d appears twice; it cannot key a message", record.Number)
 			}
 			seenRecords[record.Number] = true
-			message := messagestore.ImportMessage{ConversationSource: Source, ConversationSourceRef: conversation.Key,
+			message := messagestore.ImportMessage{BodySource: "platform", ConversationSource: Source, ConversationSourceRef: conversation.Key,
 				SentAt: record.Time.UnixMilli(), SenderHandle: record.UserName, Kind: "text", Body: strings.TrimSpace(record.Message),
 				Source: Source, SourceRef: MessageSourceRef(record)}
 			if message.Body == "" && record.ActionType != "Chat Message" {

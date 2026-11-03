@@ -175,7 +175,7 @@ func send(sink importclient.Sink, threads []facebookmessages.Thread, opts option
 }
 
 func importMessage(thread facebookmessages.Thread, message facebookmessages.Message, opts options) (messagestore.ImportMessage, error) {
-	imported := messagestore.ImportMessage{ConversationSource: Source, ConversationSourceRef: thread.Ref(), SentAt: message.Time.UnixMilli(),
+	imported := messagestore.ImportMessage{BodySource: "platform", ConversationSource: Source, ConversationSourceRef: thread.Ref(), SentAt: message.Time.UnixMilli(),
 		SenderHandle: message.Sender, Kind: "text", Body: message.Content, DeletedOnPlatform: message.IsUnsent,
 		Source: Source, SourceRef: message.Ref}
 	if message.ShareLink != "" && !strings.Contains(imported.Body, message.ShareLink) {

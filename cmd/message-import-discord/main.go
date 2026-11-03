@@ -219,7 +219,7 @@ func importMessage(channelID string, message discordpackage.Message, opts option
 		// The package holds only the owner's messages, and names no author.
 		sender = opts.selfID
 	}
-	imported := messagestore.ImportMessage{ConversationSource: Source, ConversationSourceRef: channelID, SentAt: message.Time.UnixMilli(),
+	imported := messagestore.ImportMessage{BodySource: "platform", ConversationSource: Source, ConversationSourceRef: channelID, SentAt: message.Time.UnixMilli(),
 		SenderHandle: sender, Kind: "text", Body: message.Contents, ReplyToSourceRef: message.ReplyToID, Edited: message.Edited,
 		Source: Source, SourceRef: message.ID}
 	for _, attachment := range message.Attachments {

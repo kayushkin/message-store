@@ -35,6 +35,9 @@ a bad request (an unknown field included), 404 for a missing id.
   keeps the stored one. Participants are added or updated by handle; a
   participant's `person_id` is written only when the batch gives one, so a
   person set by hand survives an import that knows nobody.
+- A message's `body_source` is required: `platform` (the app's own text) or
+  `bridge` (a bridge's rendering). A bridge's text never replaces stored
+  platform text; any other non-empty text replaces the stored text.
 - A message's `embeds` and `buttons` (a bot's cards and the buttons under a
   message) are replaced by an import that sends any and kept by one that sends
   none.

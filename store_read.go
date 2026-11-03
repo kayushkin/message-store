@@ -30,7 +30,7 @@ type MessageFilter struct {
 }
 
 const messageColumns = `m.id, m.conversation_id, m.sent_at, m.sender_handle, COALESCE(p.display_name, ''), COALESCE(p.person_id, ''), COALESCE(p.is_self, 0),
-	m.kind, m.body, m.attachments, m.embeds, m.buttons, m.reply_to_source_ref, m.call_seconds, m.edited, m.deleted_on_platform, m.source, m.source_ref, m.imported_by, m.seq`
+	m.kind, m.body, m.body_source, m.attachments, m.embeds, m.buttons, m.reply_to_source_ref, m.call_seconds, m.edited, m.deleted_on_platform, m.source, m.source_ref, m.imported_by, m.seq`
 
 const messageJoin = `FROM messages m LEFT JOIN participants p ON p.conversation_id = m.conversation_id AND p.handle = m.sender_handle`
 
@@ -40,7 +40,7 @@ func scanMessage(rows interface{ Scan(...any) error }) (Message, int64, error) {
 	var attachments, embeds, buttons string
 	var seq int64
 	if err := rows.Scan(&message.ID, &message.ConversationID, &message.SentAt, &message.SenderHandle, &message.SenderName, &message.SenderPersonID, &isSelf,
-		&message.Kind, &message.Body, &attachments, &embeds, &buttons, &message.ReplyToSourceRef, &message.CallSeconds, &edited, &deleted,
+		&message.Kind, &message.Body, &message.BodySource, &attachments, &embeds, &buttons, &message.ReplyToSourceRef, &message.CallSeconds, &edited, &deleted,
 		&message.Source, &message.SourceRef, &message.ImportedBy, &seq); err != nil {
 		return Message{}, 0, err
 	}

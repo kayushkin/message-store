@@ -76,6 +76,10 @@ func Open(dataDir string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+	if _, err := db.Exec(fillBodySources); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate: fill body sources: %w", err)
+	}
 	if err := os.Chmod(dbPath, 0o600); err != nil {
 		db.Close()
 		return nil, err
@@ -91,7 +95,16 @@ var addedColumns = []struct{ table, column, definition string }{
 	{"messages", "buttons", "TEXT NOT NULL DEFAULT '[]'"},
 	{"conversations", "parent_source_ref", "TEXT NOT NULL DEFAULT ''"},
 	{"accounts", "credential_id", "TEXT NOT NULL DEFAULT ''"},
+	{"messages", "body_source", "TEXT NOT NULL DEFAULT ''"},
 }
+
+// fillBodySources names, once, where each older message's text came from:
+// the multichat importer's text was the bridge's, any other importer's the
+// platform's. A row named bridge wrongly only lets the platform's own text
+// replace it on the next read.
+const fillBodySources = `UPDATE messages SET body_source = CASE
+	WHEN imported_by IN (SELECT id FROM imports WHERE importer = 'message-import-multichat') THEN 'bridge' ELSE 'platform' END
+	WHERE body_source = ''`
 
 func addMissingColumns(db *sql.DB) error {
 	for _, added := range addedColumns {

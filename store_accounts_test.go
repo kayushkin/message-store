@@ -22,7 +22,7 @@ func TestAnAccountSeesTheConversationsItsHandleTakesPartIn(t *testing.T) {
 			{Platform: "discord", Source: "discord", SourceRef: "c2", Title: "elsewhere", IsGroup: true},
 			{Platform: "skype", Source: "skype", SourceRef: "900", Title: "same handle, other platform"},
 		},
-		Messages: []ImportMessage{{ConversationSource: "discord", ConversationSourceRef: "c1", SentAt: at("2026-01-02T10:00:00Z"),
+		Messages: []ImportMessage{{BodySource: "platform", ConversationSource: "discord", ConversationSourceRef: "c1", SentAt: at("2026-01-02T10:00:00Z"),
 			SenderHandle: "900", Kind: "text", Source: "discord", SourceRef: "m1",
 			Embeds:  []Embed{{Title: "Picnic", Fields: []EmbedField{{Name: "Going", Value: "3 of 10"}}}},
 			Buttons: []Button{{Label: "Join"}}}},
@@ -77,7 +77,7 @@ func TestASecondSourceReadingTheSameMessageWritesNoRevision(t *testing.T) {
 	ts := newTestServer(t)
 	var run Import
 	ts.call("POST", "/imports", ImportStart{Importer: "test"}, 201, &run)
-	message := ImportMessage{ConversationSource: "discord", ConversationSourceRef: "c1", SentAt: at("2026-01-02T10:00:00Z"),
+	message := ImportMessage{BodySource: "platform", ConversationSource: "discord", ConversationSourceRef: "c1", SentAt: at("2026-01-02T10:00:00Z"),
 		SenderHandle: "7", Kind: "text", Body: "hello", Source: "discord", SourceRef: "m1", SourceHash: "first importer"}
 	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Conversations: []ImportConversation{{Platform: "discord", Source: "discord", SourceRef: "c1", IsGroup: true}},
 		Messages: []ImportMessage{message}}, 200, nil)
@@ -121,4 +121,40 @@ func TestAnAccountKeepsItsCredentialAndAThreadKeepsItsChannel(t *testing.T) {
 	if conversations[0].ParentSourceRef != "c1" {
 		t.Fatalf("parent = %q, want c1 kept", conversations[0].ParentSourceRef)
 	}
+}
+
+func TestABridgesTextNeverReplacesThePlatformsOwn(t *testing.T) {
+	ts := newTestServer(t)
+	var run Import
+	ts.call("POST", "/imports", ImportStart{Importer: "test"}, 201, &run)
+	conversation := ImportConversation{Platform: "discord", Source: "discord", SourceRef: "c1", IsGroup: true}
+	platform := ImportMessage{BodySource: "platform", ConversationSource: "discord", ConversationSourceRef: "c1", SentAt: at("2026-01-02T10:00:00Z"),
+		SenderHandle: "7", Kind: "text", Body: "starts <t:1789168500:t> with <@42>", Source: "discord", SourceRef: "m1", SourceHash: "api"}
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Conversations: []ImportConversation{conversation}, Messages: []ImportMessage{platform}}, 200, nil)
+	bridge := platform
+	bridge.BodySource, bridge.Body, bridge.SourceHash = "bridge", "starts **02:30 UTC** with Carol", "bridge"
+	var counts ImportCounts
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Messages: []ImportMessage{bridge}}, 200, &counts)
+	var page MessagePage
+	ts.call("GET", "/messages", nil, 200, &page)
+	if page.Messages[0].Body != platform.Body || page.Messages[0].BodySource != "platform" || counts.MessagesUnchanged != 1 {
+		t.Fatalf("after the bridge's copy: %q (%s), counts %+v; want the platform's text kept and nothing written", page.Messages[0].Body, page.Messages[0].BodySource, counts)
+	}
+	// A bridge's text fills a message the platform gave no text, and the
+	// platform's own text replaces a bridge's.
+	edited := platform
+	edited.Body, edited.SourceHash = "starts <t:1789168500:t> with <@42>, edited", "api again"
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Messages: []ImportMessage{edited}}, 200, nil)
+	ts.call("GET", "/messages", nil, 200, &page)
+	if page.Messages[0].Body != edited.Body {
+		t.Fatalf("the platform's edit = %q, want it taken", page.Messages[0].Body)
+	}
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Messages: []ImportMessage{{BodySource: "bridge", ConversationSource: "discord", ConversationSourceRef: "c1",
+		SentAt: at("2026-01-02T11:00:00Z"), SenderHandle: "7", Kind: "text", Body: "only the bridge saw this", Source: "discord", SourceRef: "m2"}}}, 200, nil)
+	ts.call("GET", "/messages?source=discord&source_ref=m2", nil, 200, &page)
+	if page.Messages[0].Body != "only the bridge saw this" || page.Messages[0].BodySource != "bridge" {
+		t.Fatalf("bridge-only message = %+v", page.Messages[0])
+	}
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Messages: []ImportMessage{{BodySource: "", ConversationSource: "discord", ConversationSourceRef: "c1",
+		SentAt: at("2026-01-02T12:00:00Z"), Kind: "text", Body: "x", Source: "discord", SourceRef: "m3"}}}, 400, nil)
 }

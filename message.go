@@ -109,11 +109,13 @@ type Message struct {
 	SenderHandle string `json:"sender_handle"`
 	// SenderName, SenderPersonID and FromSelf are read through the
 	// conversation's participant row for SenderHandle.
-	SenderName        string       `json:"sender_name"`
-	SenderPersonID    string       `json:"sender_person_id"`
-	FromSelf          bool         `json:"from_self"`
-	Kind              string       `json:"kind"`
-	Body              string       `json:"body"`
+	SenderName     string `json:"sender_name"`
+	SenderPersonID string `json:"sender_person_id"`
+	FromSelf       bool   `json:"from_self"`
+	Kind           string `json:"kind"`
+	Body           string `json:"body"`
+	// BodySource is one of BodySources: whose text Body is.
+	BodySource        string       `json:"body_source"`
 	Attachments       []Attachment `json:"attachments"`
 	Embeds            []Embed      `json:"embeds"`
 	Buttons           []Button     `json:"buttons"`
@@ -259,13 +261,16 @@ type ImportConversation struct {
 // ImportMessage is a message found by (source, source_ref). Its conversation
 // is named by the conversation's own source and source_ref.
 type ImportMessage struct {
-	ConversationSource    string       `json:"conversation_source"`
-	ConversationSourceRef string       `json:"conversation_source_ref"`
-	SentAt                int64        `json:"sent_at"`
-	SenderHandle          string       `json:"sender_handle"`
-	Kind                  string       `json:"kind"`
-	Body                  string       `json:"body"`
-	Attachments           []Attachment `json:"attachments"`
+	ConversationSource    string `json:"conversation_source"`
+	ConversationSourceRef string `json:"conversation_source_ref"`
+	SentAt                int64  `json:"sent_at"`
+	SenderHandle          string `json:"sender_handle"`
+	Kind                  string `json:"kind"`
+	Body                  string `json:"body"`
+	// BodySource is one of BodySources, and required: a bridge's text never
+	// replaces the platform's own.
+	BodySource  string       `json:"body_source"`
+	Attachments []Attachment `json:"attachments"`
 	// Embeds and Buttons replace the stored ones when the import sends any;
 	// none keeps what is stored.
 	Embeds            []Embed  `json:"embeds,omitempty"`

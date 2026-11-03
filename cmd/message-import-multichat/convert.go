@@ -246,7 +246,7 @@ func (c converter) message(row loggedMessage) (messagestore.ImportMessage, error
 		if err := json.Unmarshal([]byte(row.ContentJSON), &content); err != nil {
 			return messagestore.ImportMessage{}, fmt.Errorf("%s: content_json: %w", row.Ref, err)
 		}
-		message.Body = content.Content
+		message.Body, message.BodySource = content.Content, "platform"
 		message.Edited = content.EditedTimestamp != nil
 		for _, attachment := range content.Attachments {
 			message.Attachments = append(message.Attachments, messagestore.Attachment{MimeType: attachment.ContentType, Name: attachment.Filename})
@@ -270,7 +270,8 @@ func (c converter) message(row loggedMessage) (messagestore.ImportMessage, error
 			latest = edits[len(edits)-1]
 			message.Edited = true
 		}
-		message.Body = latest.Body
+		// The bridge's rendering: Discord's tokens already turned into names and times.
+		message.Body, message.BodySource = latest.Body, "bridge"
 		if target, known := c.events[row.ReplyToEventID]; known && row.ReplyToEventID != "" {
 			_, message.ReplyToSourceRef = messageKey(target)
 		}

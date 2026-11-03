@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS messages (
     sender_handle   TEXT NOT NULL DEFAULT '',  -- participants.handle; '' for a system line
     kind            TEXT NOT NULL,             -- vocabulary.go MessageKinds
     body            TEXT NOT NULL DEFAULT '',
+    body_source     TEXT NOT NULL DEFAULT '',  -- vocabulary.go BodySources: whose text body is
     attachments     TEXT NOT NULL DEFAULT '[]',-- JSON []Attachment
     reply_to_source_ref TEXT NOT NULL DEFAULT '',
     call_seconds    INTEGER NOT NULL DEFAULT 0,-- kind call: how long it lasted
