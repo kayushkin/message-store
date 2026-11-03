@@ -193,7 +193,7 @@ func (c *ImportCounts) add(other ImportCounts) {
 	c.ConversationMergesSkipped += other.ConversationMergesSkipped
 }
 
-// applySupersession retires a row in favour of a stored message.
+// applySupersession retires a row in favor of a stored message.
 func (w *batchWriter) applySupersession(supersession ImportSupersession) error {
 	if supersession.By.Source == "" || supersession.By.SourceRef == "" {
 		return fmt.Errorf("%w: by needs source and source_ref", ErrInvalid)
@@ -509,7 +509,7 @@ func (w *batchWriter) upsertMessage(message ImportMessage) error {
 	return nil
 }
 
-// supersede retires the row filed under old, if there is one, in favour of
+// supersede retires the row filed under old, if there is one, in favor of
 // the message supersededBy: it copies every column to superseded_messages
 // and removes the row. A message cannot supersede itself.
 func (w *batchWriter) supersede(old MessageKey, supersededBy string) error {
@@ -532,7 +532,7 @@ func (w *batchWriter) supersede(old MessageKey, supersededBy string) error {
 		VALUES (?,?,?,?,?,?,?)`, oldID, old.Source, old.SourceRef, supersededBy, w.importID, w.now, rowJSON); err != nil {
 		return err
 	}
-	// A row retired earlier in favour of the one now retired follows it.
+	// A row retired earlier in favor of the one now retired follows it.
 	if _, err := w.tx.Exec(`UPDATE superseded_messages SET superseded_by = ? WHERE superseded_by = ?`, supersededBy, oldID); err != nil {
 		return err
 	}

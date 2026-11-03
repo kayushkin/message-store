@@ -31,7 +31,7 @@ export interface Conversation {
    */
   participants: Participant[];
   /**
-   * MessageCount, FirstMessageAt and LastMessageAt summarise its messages.
+   * MessageCount, FirstMessageAt and LastMessageAt summarize its messages.
    */
   message_count: number /* int */;
   first_message_at: number /* int64 */;
@@ -243,7 +243,7 @@ export interface ImportBatch {
   messages: ImportMessage[];
   conversation_days: ImportConversationDay[];
   /**
-   * Supersessions retire rows in favour of messages already stored,
+   * Supersessions retire rows in favor of messages already stored,
    * written after the batch's messages.
    */
   supersessions?: ImportSupersession[];
@@ -288,7 +288,7 @@ export interface ConversationMerge {
   row: { [column: string]: unknown };
 }
 /**
- * ImportSupersession retires the row filed under Superseded in favour of the
+ * ImportSupersession retires the row filed under Superseded in favor of the
  * stored message filed under By, as an ImportMessage's supersedes does, for
  * an importer that does not own By's row. A Superseded row that is not
  * stored, or already retired, is nothing to do; a By that is not stored is a

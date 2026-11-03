@@ -309,9 +309,9 @@ func TestASupersededMessageIsKeptAsARecordAndItsIDRedirects(t *testing.T) {
 	}
 }
 
-// A supersession retires an importer's own row in favour of a message another
+// A supersession retires an importer's own row in favor of a message another
 // importer stored, without touching that message; again, it does nothing.
-func TestASupersessionRetiresARowInFavourOfAStoredMessage(t *testing.T) {
+func TestASupersessionRetiresARowInFavorOfAStoredMessage(t *testing.T) {
 	ts := newTestServer(t)
 	importSample(ts)
 	var run Import

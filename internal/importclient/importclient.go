@@ -104,7 +104,7 @@ func (c *Client) AddConversationDay(day messagestore.ImportConversationDay) erro
 	return c.queued()
 }
 
-// AddSupersession queues the retirement of a row in favour of a stored
+// AddSupersession queues the retirement of a row in favor of a stored
 // message.
 func (c *Client) AddSupersession(supersession messagestore.ImportSupersession) error {
 	c.Read["supersessions"]++

@@ -318,7 +318,7 @@ func (run runner) run(out io.Writer) error {
 	}
 	copies := matchPhoneCopies(messages, texts)
 	messages, supersessions := copies.split(messages)
-	fmt.Fprintf(out, "%d texts are copies of the %d phone texts message-store holds and are retired in favour of them\n", len(copies.phoneOf), len(texts))
+	fmt.Fprintf(out, "%d texts are copies of the %d phone texts message-store holds and are retired in favor of them\n", len(copies.phoneOf), len(texts))
 	photoCount, merged := 0, 0
 	for _, message := range messages {
 		if len(message.Supersedes) > 1 {

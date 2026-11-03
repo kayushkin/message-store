@@ -50,7 +50,7 @@ a bad request (an unknown field included), 404 for a missing id.
   counts them as `messages_superseded`. A message sent again under a
   superseded key is skipped and counted as `messages_superseded_skipped`.
 - A batch's `supersessions` (`[{"superseded":{source,source_ref},"by":{source,source_ref}}]`,
-  applied after its messages) retire a row in favour of a message already
+  applied after its messages) retire a row in favor of a message already
   stored, for an importer that does not own that message. A `by` that is not
   stored is a 400; a `superseded` that is not stored, or already retired, is
   nothing to do.

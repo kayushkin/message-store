@@ -270,10 +270,10 @@ func TestGoogleMessagesWebRowsAreFiledAsTheirBridgeTwin(t *testing.T) {
 	}
 }
 
-// A multichat text that is a phone text is retired in favour of it, with the
+// A multichat text that is a phone text is retired in favor of it, with the
 // web row it superseded; a common text in another phone conversation in the
 // same minute is not taken for it.
-func TestMultichatCopiesOfPhoneTextsAreRetiredInFavourOfThem(t *testing.T) {
+func TestMultichatCopiesOfPhoneTextsAreRetiredInFavorOfThem(t *testing.T) {
 	exact := base.Add(42*time.Second + 300*time.Millisecond).UnixMilli()
 	minute := base.UnixMilli()
 	texts := []phoneText{

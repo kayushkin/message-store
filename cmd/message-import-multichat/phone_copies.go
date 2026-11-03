@@ -18,7 +18,7 @@ import (
 // the web bridge, whose times are cut to the minute. Each multichat room is
 // held to the one phone conversation most of its matches fall in, so a
 // common text sent to someone else in the same minute is not taken for it.
-// The multichat row is not sent and is retired in favour of the phone row,
+// The multichat row is not sent and is retired in favor of the phone row,
 // with the rows it would itself have superseded.
 
 // phoneSource is the id namespace message-import-android files texts under.
