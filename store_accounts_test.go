@@ -155,6 +155,17 @@ func TestABridgesTextNeverReplacesThePlatformsOwn(t *testing.T) {
 	if page.Messages[0].Body != "only the bridge saw this" || page.Messages[0].BodySource != "bridge" {
 		t.Fatalf("bridge-only message = %+v", page.Messages[0])
 	}
+	// A bridge calling a platform's system line text changes nothing.
+	systemLine := ImportMessage{BodySource: "platform", ConversationSource: "discord", ConversationSourceRef: "c1", SentAt: at("2026-01-02T13:00:00Z"),
+		SenderHandle: "7", Kind: "system", Body: "added <@42> to the thread", Source: "discord", SourceRef: "m4", SourceHash: "api"}
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Messages: []ImportMessage{systemLine}}, 200, nil)
+	asText := systemLine
+	asText.BodySource, asText.Kind, asText.Body, asText.SourceHash = "bridge", "text", "added Carol to the thread", "bridge"
+	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Messages: []ImportMessage{asText}}, 200, &counts)
+	ts.call("GET", "/messages?source=discord&source_ref=m4", nil, 200, &page)
+	if page.Messages[0].Kind != "system" || counts.MessagesUnchanged != 1 {
+		t.Fatalf("after the bridge's reading: kind %s, counts %+v; want system and nothing written", page.Messages[0].Kind, counts)
+	}
 	ts.call("POST", "/imports/"+run.ID+"/batches", ImportBatch{Messages: []ImportMessage{{BodySource: "", ConversationSource: "discord", ConversationSourceRef: "c1",
 		SentAt: at("2026-01-02T12:00:00Z"), Kind: "text", Body: "x", Source: "discord", SourceRef: "m3"}}}, 400, nil)
 }

@@ -317,6 +317,7 @@ type storedMessage struct {
 	Embeds            []Embed
 	Buttons           []Button
 	BodySource        string
+	Kind              string
 	ReplyToSourceRef  string
 	CallSeconds       int
 	Edited            bool
@@ -347,9 +348,16 @@ func mergeMessage(kept storedMessage, incoming ImportMessage) storedMessage {
 		Buttons:           kept.Buttons,
 	}
 	// The incoming text replaces the stored text unless it is empty, or a
-	// bridge's rendering of text the platform itself gave.
-	if incoming.Body != "" && !(incoming.BodySource == "bridge" && kept.BodySource == "platform") {
+	// bridge's rendering of text the platform itself gave. What kind of
+	// message it is follows the same rule: a bridge calls a platform's
+	// system line plain text.
+	bridgeOverPlatform := incoming.BodySource == "bridge" && kept.BodySource == "platform"
+	if incoming.Body != "" && !bridgeOverPlatform {
 		merged.Body, merged.BodySource = incoming.Body, incoming.BodySource
+	}
+	merged.Kind = incoming.Kind
+	if bridgeOverPlatform {
+		merged.Kind = kept.Kind
 	}
 	if len(incoming.Embeds) > 0 {
 		merged.Embeds = incoming.Embeds
@@ -469,11 +477,11 @@ func (w *batchWriter) upsertMessage(message ImportMessage) error {
 		w.counts.MessagesUnchanged++
 	default:
 		var kept storedMessage
-		var keptAttachments, keptEmbeds, keptButtons, rowJSON, keptConversationID, keptKind string
+		var keptAttachments, keptEmbeds, keptButtons, rowJSON, keptConversationID string
 		var keptSentAt int64
 		var edited, deleted int
 		if err := w.tx.QueryRow(`SELECT conversation_id, sent_at, kind, sender_handle, body, body_source, attachments, embeds, buttons, reply_to_source_ref, call_seconds, edited, deleted_on_platform, `+messageRowJSON+`
-				FROM messages WHERE id = ?`, id).Scan(&keptConversationID, &keptSentAt, &keptKind, &kept.SenderHandle, &kept.Body, &kept.BodySource, &keptAttachments, &keptEmbeds, &keptButtons, &kept.ReplyToSourceRef, &kept.CallSeconds,
+				FROM messages WHERE id = ?`, id).Scan(&keptConversationID, &keptSentAt, &kept.Kind, &kept.SenderHandle, &kept.Body, &kept.BodySource, &keptAttachments, &keptEmbeds, &keptButtons, &kept.ReplyToSourceRef, &kept.CallSeconds,
 			&edited, &deleted, &rowJSON); err != nil {
 			return err
 		}
@@ -493,7 +501,7 @@ func (w *batchWriter) upsertMessage(message ImportMessage) error {
 		mergedButtons, _ := json.Marshal(merged.Buttons)
 		// Another source read the same message: nothing to write, and no
 		// revision of a row that did not change.
-		if conversationID == keptConversationID && message.SentAt == keptSentAt && message.Kind == keptKind &&
+		if conversationID == keptConversationID && message.SentAt == keptSentAt && merged.Kind == kept.Kind &&
 			merged.SenderHandle == kept.SenderHandle && merged.Body == kept.Body && merged.BodySource == kept.BodySource && string(mergedAttachments) == keptAttachments &&
 			string(mergedEmbeds) == keptEmbeds && string(mergedButtons) == keptButtons && merged.ReplyToSourceRef == kept.ReplyToSourceRef &&
 			merged.CallSeconds == kept.CallSeconds && merged.Edited == kept.Edited && merged.DeletedOnPlatform == kept.DeletedOnPlatform {
@@ -506,7 +514,7 @@ func (w *batchWriter) upsertMessage(message ImportMessage) error {
 		}
 		_, err = w.tx.Exec(`UPDATE messages SET conversation_id = ?, sent_at = ?, sender_handle = ?, kind = ?, body = ?, body_source = ?, attachments = ?, embeds = ?, buttons = ?, reply_to_source_ref = ?,
 				call_seconds = ?, edited = ?, deleted_on_platform = ?, source_hash = ?, imported_by = ?, updated_at = ? WHERE id = ?`,
-			conversationID, message.SentAt, merged.SenderHandle, message.Kind, merged.Body, merged.BodySource, string(mergedAttachments), string(mergedEmbeds), string(mergedButtons), merged.ReplyToSourceRef,
+			conversationID, message.SentAt, merged.SenderHandle, merged.Kind, merged.Body, merged.BodySource, string(mergedAttachments), string(mergedEmbeds), string(mergedButtons), merged.ReplyToSourceRef,
 			merged.CallSeconds, boolInt(merged.Edited), boolInt(merged.DeletedOnPlatform), message.SourceHash, w.importID, w.now, id)
 		if err != nil {
 			return err
