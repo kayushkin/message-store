@@ -22,3 +22,12 @@ Importers live in `cmd/` and post through `internal/importclient`. See
 `CONTRACT.md` for the routes.
 
 Build and test need the `sqlite_fts5` tag: `go test -tags sqlite_fts5 ./...`.
+
+`go.mod` points at [llm-bridge](https://github.com/kayushkin/llm-bridge) in a
+folder beside this one, so clone both side by side before you build:
+
+```bash
+git clone https://github.com/kayushkin/llm-bridge
+git clone https://github.com/kayushkin/message-store
+cd message-store && go test -tags sqlite_fts5 ./...
+```
