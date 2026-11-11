@@ -78,7 +78,19 @@ if ! systemctl --user is-active --quiet "$SERVICE"; then
 fi
 ADDR="$(sed -n 's/^Environment=MESSAGE_STORE_ADDR=//p' "$UNIT_SRC")"
 [ -n "$ADDR" ] || { echo "ERROR: $UNIT_SRC sets no MESSAGE_STORE_ADDR"; exit 1; }
-health="$(curl -sfS "http://$ADDR/health")" || { echo "ERROR: /health did not answer"; exit 1; }
+# Opening the database runs the start-up migrations, which take a few
+# seconds on a large one; wait for /health while the unit stays up.
+health=""
+for attempt in $(seq 1 60); do
+  if health="$(curl -sf "http://$ADDR/health")"; then break; fi
+  if ! systemctl --user is-active --quiet "$SERVICE"; then
+    echo "ERROR: $SERVICE stopped before /health answered"
+    journalctl --user -u "$SERVICE" -n 20 --no-pager 2>&1
+    exit 1
+  fi
+  sleep 1
+done
+[ -n "$health" ] || { echo "ERROR: /health did not answer within 60 s"; exit 1; }
 printf '%s' "$health" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin)["status"]=="ok" else 1)' || { echo "ERROR: /health is not ok: $health"; exit 1; }
 echo "    /health is ok"
 
