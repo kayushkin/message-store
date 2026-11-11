@@ -80,6 +80,10 @@ func Open(dataDir string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("migrate: fill body sources: %w", err)
 	}
+	if err := repairReusedConversationIDs(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("migrate: repair reused conversation ids: %w", err)
+	}
 	if err := os.Chmod(dbPath, 0o600); err != nil {
 		db.Close()
 		return nil, err
@@ -138,11 +142,30 @@ func formatID(prefix string, seq int64) string { return fmt.Sprintf("%s%06d", pr
 
 func nowMillis() int64 { return time.Now().UnixMilli() }
 
-// nextSeq reads the next seq of table inside tx.
+// retiredIDs names, for a table whose rows can be removed, the table that
+// keeps each removed row's id and the prefix of that id. A removed id still
+// answers (it redirects), so it must never be minted again.
+var retiredIDs = map[string]struct{ table, column, prefix string }{
+	"conversations": {"conversation_merges", "conversation_id", prefixConversation},
+	"messages":      {"superseded_messages", "id", prefixMessage},
+}
+
+// nextSeq reads the next seq of table inside tx: one past both the highest
+// live row and the highest id retired from it.
 func nextSeq(tx *sql.Tx, table string) (int64, error) {
 	var max sql.NullInt64
 	if err := tx.QueryRow("SELECT MAX(seq) FROM " + table).Scan(&max); err != nil {
 		return 0, err
+	}
+	if retired, ok := retiredIDs[table]; ok {
+		var retiredMax sql.NullInt64
+		query := fmt.Sprintf("SELECT MAX(CAST(substr(%s, %d) AS INTEGER)) FROM %s", retired.column, len(retired.prefix)+1, retired.table)
+		if err := tx.QueryRow(query).Scan(&retiredMax); err != nil {
+			return 0, fmt.Errorf("highest id retired from %s: %w", table, err)
+		}
+		if retiredMax.Int64 > max.Int64 {
+			max = retiredMax
+		}
 	}
 	return max.Int64 + 1, nil
 }
